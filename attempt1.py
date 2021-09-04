@@ -108,7 +108,6 @@ val_data = val_data.map(lambda x : preprocessing(x, img_size, img_size))
 #%%
 for data in train_data.take(1):
     image, label = data[0], data[2]
-    print(image)
     print('Image size :', image.shape)
     plt.imshow(image.numpy())
     plt.axis('off')
@@ -127,6 +126,7 @@ for data in val_data.take(1):
 data_shapes = ([None, None, None], [None, None], [None,])
 padding_values = (tf.constant(0, tf.float32), tf.constant(0, tf.float32), tf.constant(-1, tf.int32))
 train_data = train_data.padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values)
+# batch size = 8 한번에 8개의 사진을 사용
 val_data = val_data.padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values)
 
 #%% ANCHOR
@@ -170,31 +170,31 @@ print(anchors)
 anchors = tf.clip_by_value(t=anchors, clip_value_min=0, clip_value_max=1) # tf.clip_by_value : min, max값보다 작거나 같은 값을 clip 값으로 대체
 print(anchors)
 
-#%% Generating Residual Proposal DEF
+#%% Generating Region Proposal DEF
 def rpn_generator(dataset, anchors, hyper_params):
     while True:
         for image_data in dataset:
             img, gt_boxes, gt_labels = image_data
             bbox_deltas, bbox_labels = calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params)
             yield img, (bbox_deltas, bbox_labels)
-
+#%%
 def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params):
-    batch_size = tf.shape(gt_boxes)
-    feature_map_shape = hyper_params['feature_map_shape']
-    anchor_count = hyper_params['anchor_count']
-    total_pos_bboxes = hyper_params['total_pos_bboxes']
-    total_neg_bboxes = hyper_params['total_neg_bboxes']
-    variances = hyper_params['variances']
+    batch_size = tf.shape(gt_boxes) # gt_boxes 는 [이미지 데이터 한장에 있는 라벨의 갯수(n개) , 좌표(4)]
+    feature_map_shape = hyper_params['feature_map_shape'] # feature_map_shape = 31
+    anchor_count = hyper_params['anchor_count'] # anchor_count = 3 * 3 
+    total_pos_bboxes = hyper_params['total_pos_bboxes'] # 이게 뭘 나타내는건지 알 수 없음.. 128
+    total_neg_bboxes = hyper_params['total_neg_bboxes'] # 이것도 마찬가지 .. 128
+    variances = hyper_params['variances'] # variances 가 무슨값인지 알 수 없음
     
 
     # Generating IoU map
-    bbox_y1, bbox_x1, bbox_y2, bbox_x2 = tf.split(anchors, 4, axis=-1)
-    gt_y1, gt_x1, gt_y2, gt_x2 = tf.split(gt_boxes, 4, axis=-1)
+    bbox_y1, bbox_x1, bbox_y2, bbox_x2 = tf.split(anchors, 4, axis=-1) # C X C  X anchor_count 개의 reference anchors 의 x, y 좌표
+    gt_y1, gt_x1, gt_y2, gt_x2 = tf.split(gt_boxes, 4, axis=-1) # gt_boxes에 있는 박스들 각각의 x, y 좌표
     
     bbox_area = tf.squeeze((bbox_y2 - bbox_y1) * (bbox_x2 - bbox_x1), axis=-1) # tf.squeeze : 텐서에서 사이즈 차원이 1이 아닌 부분만 짜낸다.
     gt_area = tf.squeeze((gt_y2 - gt_y1) * (gt_x2 - gt_x1), axis = -1)
     
-    x_top = tf.maximum(bbox_x1, tf.transpose(gt_x1, perm=[0, 2, 1]))
+    x_top = tf.maximum(bbox_x1, tf.transpose(gt_x1, perm=[0, 2, 1])) # tf.transpose : 텐서를 [] 순서의 모양으로 transpose
     y_top = tf.maximum(bbox_y1, tf.transpose(gt_y1, [0, 2, 1]))
     x_bottom = tf.minimum(bbox_x2, tf.transpose(gt_x2, [0, 2, 1]))
     y_bottom = tf.minimum(bbox_y2, tf.transpose(gt_y2, [0, 2, 1]))
@@ -203,25 +203,94 @@ def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params):
     
     union_area = (tf.expand_dims(bbox_area, -1) + tf.expand_dims(gt_area, 1) - intersection_area)
     
-    iou_map = intersection_area / union_area
+    iou_map = intersection_area / union_area 
+    # 8장의 사진에 대한, C X C X 9 개의 reference anchors 와, ground truth box n개(최대4) 와의 IoU계산
     #
     max_indices_each_row = tf.argmax(iou_map, axis=2, output_type=tf.int32)
+    # 각 사진에서 IoU가 가장 높게 나오는 gt_box의 reference anchor에서의 index 추출
+
     max_indices_each_column = tf.argmax(iou_map, axis=1, output_type=tf.int32)
+    # 각 사진에서 IoU가 가장 높게 나오는 reference anchor 의 index 추출
     #
-    merged_iou_map = tf.reduce_max(iou_map, axis=2) # tf.reduce_max 의 의미 정확하지 않음..
+    merged_iou_map = tf.reduce_max(iou_map, axis=2) 
+    # 8장의 사진 에서 하나의 reference anchor와 4개의 gt_boxes 들 중 가장 높은값만 남기기
     #
     pos_mask = tf.greater(merged_iou_map, 0.7)
+    # 각 사진에서 가장 높은 IoU가 threshold 보다 높은지 
     #
     valid_indices_cond = tf.not_equal(gt_labels, -1)
+    # 왜 -1?
+    
     valid_indices = tf.cast(tf.where(valid_indices_cond), tf.int32)
+    # valid_indices 에서 label이 있는 부분의 tensor_index 반환
+    
     valid_max_indices = max_indices_each_column[valid_indices_cond]
+    # 8장의 사진에 15개의 라벨이 있고 이들과의 IoU가 가장높은 사진에서의 reference anchor index 반환
     #
+
     scatter_bbox_indices = tf.stack([valid_indices[..., 0], valid_max_indices], 1)
+    # 8장의 사진 에서 라벨이 존재하는 사진의 index와 해당 라벨의 gt_box와 가장 높은 IoU를 가지는 reference acnhor의 index 반환 
     max_pos_mask = tf.scatter_nd(scatter_bbox_indices, tf.fill((tf.shape(valid_indices)[0], ), True), tf.shape(pos_mask))
+    # 8장의 사진 각각의 reference anchors에서 gt_box와의 IoU 를 가지는 reference anchor의 index 만 True
+    pos_mask = tf.logical_or(pos_mask, max_pos_mask)
+    # pos_mask에 threshold 이상의 IoU를 가지는 reference anchor 와, 가장 높은 IoU를 가지는 reference anchor 만 True 반환
+    pos_mask = randomly_select_xyz_mask(pos_mask, tf.constant([total_pos_bboxes], dtype=tf.int32))
+    #
+    pos_count = tf.reduce_sum(tf.cast(pos_mask, tf.int32), axis=-1)
+
+    neg_count = (total_pos_bboxes + total_neg_bboxes) - pos_count
+    
+    neg_mask = tf.logical_and(tf.less(merged_iou_map, 0.3), tf.logical_not(pos_mask))
+    neg_mask = randomly_select_xyz_mask(neg_mask, neg_count)
+    #
+    
+    pos_labels = tf.where(pos_mask, tf.ones_like(pos_mask, dtype=tf.float32), tf.constant(-1.0, dtype=tf.float32))
+    # ?
+    neg_labels = tf.cast(neg_mask, dtype=tf.float32)
+    bbox_labels = tf.add(pos_labels, neg_labels)
+    
+    gt_boxes_map = tf.gather(gt_boxes, max_indices_each_row, batch_dims=1)
+
+    expanded_gt_boxes = tf.where(tf.expand_dims(pos_mask, -1), gt_boxes_map, tf.zeros_like(gt_boxes_map))
     
     
+    bbox_width = anchors[..., 3] - anchors[..., 1]
+    bbox_height = anchors[..., 2] - anchors[...,0]
+    bbox_ctr_x = anchors[..., 1] + 0.5 * bbox_width
+    bbox_ctr_y = anchors[..., 0] + 0.5 * bbox_height
     
+    gt_width = expanded_gt_boxes[..., 3] - expanded_gt_boxes[..., 1]
+    gt_height = expanded_gt_boxes[..., 2] - expanded_gt_boxes[..., 0]
+    gt_ctr_x = expanded_gt_boxes[..., 1] + 0.5 * gt_width
+    gt_ctr_y = expanded_gt_boxes[..., 0] + 0.5 * gt_height
     
+    bbox_width = tf.where(tf.equal(bbox_wodth, 0), 1e-3, bbox_width)
+    bbox_height = tf.where(tf.equal(bbox_height, 0), 1e-3, bbox_height)
+    delta_x = tf.where(tf.equal(gt_width, 0), tf.zeros_like(gt_width), tf.truediv((gt_ctr_x - bbox_ctr_x), bbox_width))
+    delta_y = tf.where(tf.equal(gt_height, 0), tf.zeros_like(gt_height), tf.truediv((gt_ctr_y - bbox_ctr_y), bbox_height))
+    delta_w = tf.where(tf.equal(gt_width, 0), tf.zeros_like(gt_width), tf.math.log(gt_width . bbox_width))
+    delta_h = tf.where(tf.equal(gt_height, 0), tf.zeros_like(gt_height), tf.math.log(gt_height / bbox_height))
+    
+    bbox_deltas = tf.stack([delta_y, delta_x, delta_h, delta_w], axis=-1)
+
+    bbox_labels = tf.reshape(bbox_labels, (batch_size, feature_map_shape, feature_map_shape, anchor_count))
+    
+    return bbox_deltas, bbox_labels
+#%%
+def randomly_select_xyz_mask(mask, select_xyz):
+    maxval = tf.reduce_max(select_xyz) * 10
+    random_mask = tf.random.uniform(tf.shape(mask), minval=1, maxval=maxval, dtype=tf.int32)
+    multiplied_mask = tf.cast(mask, tf.int32) * random_mask
+    sorted_mask = tf.argsort(multiplied_mask, direction="DESCENDING")
+    sorted_mask_indices = tf.argsort(sorted_mask)
+    selected_mask = tf.less(sorted_mask_indices, tf.expand_dims(select_xyz, 1))
+    return tf.logical_and(mask, selected_mask)
+    
+
+#%% Generating Region Proposal
+rpn_train_feed = rpn_generator(train_data, anchors, hyper_params)
+rpn_val_feed = rpn_generator(val_data, anchors, hyper_params)
+
 
 #%% RPN MODEL with VGG-16
 from tensorflow.keras.applications.vgg16 import VGG16
@@ -254,4 +323,38 @@ rpn_model = Model(inputs=base_model.input, outputs=[rpn_reg_output, rpn_cls_outp
 
 # feature_extractor 를 왜 return ?
 
-#%%
+#%% Regression Loss Function
+def reg_loss(*args):
+    y_true, y_pred = args if len(args) == 2 else args[0]
+    y_pred = tf.reshape(y_pred, (tf.shape(y_pred)[0], -1, 4))
+    #
+    loss_fn = tf.losses.Huber(reduction=tf.losses.Reduction.NONE)
+    # Huber?
+
+    loss_for_all = loss_fn(y_true, y_pred)
+    loss_for_all = tf.reduce_sum(loss_for_all, axis=-1)
+    # reduce sum?
+    
+    pos_cond = tf.reduce_any(tf.not_equal(y_true, tf.constant(0.0)), axis=-1)
+    # tf.reduce_any?
+    
+    pos_mask = tf.cast(pos_cond, dtype=tf.float32)
+    
+    #
+    loc_loss = tf.reduce_sum(pos_mask * loss_for_all)
+    total_pos_bboxes = tf.maximum(1.0, tf.reduce_sum(pos_mask))
+    return loc_loss / total_pos_bboxes
+
+#%% Objectness Loss Function
+def rpn_cls_loss(*args):
+    y_true, y_pred = args if len(args) == 2 else args[0]
+    indices = tf.where(tf.not_equal(y_true, tf.constant(-1.0, dtype=tf.float32)))
+    target = tf.gather_nd(y_true, indices)
+    output = tf.gather_nd(y_pred, indices)
+    # tf.gather_nd ?
+    
+    lf = tf.losses.BinaryCrossentropy()
+    return lf(target, output)
+
+
+# %%
