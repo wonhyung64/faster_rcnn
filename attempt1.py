@@ -177,9 +177,10 @@ def rpn_generator(dataset, anchors, hyper_params):
             img, gt_boxes, gt_labels = image_data
             bbox_deltas, bbox_labels = calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params)
             yield img, (bbox_deltas, bbox_labels)
+
 #%%
 def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params):
-    batch_size = tf.shape(gt_boxes) # gt_boxes 는 [이미지 데이터 한장에 있는 라벨의 갯수(n개) , 좌표(4)]
+    batch_size = tf.shape(gt_boxes)[0] # gt_boxes 는 [이미지 데이터 한장에 있는 라벨의 갯수(n개) , 좌표(4)]
     feature_map_shape = hyper_params['feature_map_shape'] # feature_map_shape = 31
     anchor_count = hyper_params['anchor_count'] # anchor_count = 3 * 3 
     total_pos_bboxes = hyper_params['total_pos_bboxes'] # 이게 뭘 나타내는건지 알 수 없음.. 128
@@ -194,7 +195,7 @@ def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params):
     bbox_area = tf.squeeze((bbox_y2 - bbox_y1) * (bbox_x2 - bbox_x1), axis=-1) # tf.squeeze : 텐서에서 사이즈 차원이 1이 아닌 부분만 짜낸다.
     gt_area = tf.squeeze((gt_y2 - gt_y1) * (gt_x2 - gt_x1), axis = -1)
     
-    x_top = tf.maximum(bbox_x1, tf.transpose(gt_x1, perm=[0, 2, 1])) # tf.transpose : 텐서를 [] 순서의 모양으로 transpose
+    x_top = tf.maximum(bbox_x1, tf.transpose(gt_x1, [0, 2, 1])) # tf.transpose : 텐서를 [] 순서의 모양으로 transpose
     y_top = tf.maximum(bbox_y1, tf.transpose(gt_y1, [0, 2, 1]))
     x_bottom = tf.minimum(bbox_x2, tf.transpose(gt_x2, [0, 2, 1]))
     y_bottom = tf.minimum(bbox_y2, tf.transpose(gt_y2, [0, 2, 1]))
@@ -264,14 +265,14 @@ def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params):
     gt_ctr_x = expanded_gt_boxes[..., 1] + 0.5 * gt_width
     gt_ctr_y = expanded_gt_boxes[..., 0] + 0.5 * gt_height
     
-    bbox_width = tf.where(tf.equal(bbox_wodth, 0), 1e-3, bbox_width)
+    bbox_width = tf.where(tf.equal(bbox_width, 0), 1e-3, bbox_width)
     bbox_height = tf.where(tf.equal(bbox_height, 0), 1e-3, bbox_height)
     delta_x = tf.where(tf.equal(gt_width, 0), tf.zeros_like(gt_width), tf.truediv((gt_ctr_x - bbox_ctr_x), bbox_width))
     delta_y = tf.where(tf.equal(gt_height, 0), tf.zeros_like(gt_height), tf.truediv((gt_ctr_y - bbox_ctr_y), bbox_height))
-    delta_w = tf.where(tf.equal(gt_width, 0), tf.zeros_like(gt_width), tf.math.log(gt_width . bbox_width))
+    delta_w = tf.where(tf.equal(gt_width, 0), tf.zeros_like(gt_width), tf.math.log(gt_width / bbox_width))
     delta_h = tf.where(tf.equal(gt_height, 0), tf.zeros_like(gt_height), tf.math.log(gt_height / bbox_height))
     
-    bbox_deltas = tf.stack([delta_y, delta_x, delta_h, delta_w], axis=-1)
+    bbox_deltas = tf.stack([delta_y, delta_x, delta_h, delta_w], axis=-1) / variances
 
     bbox_labels = tf.reshape(bbox_labels, (batch_size, feature_map_shape, feature_map_shape, anchor_count))
     
@@ -291,11 +292,13 @@ def randomly_select_xyz_mask(mask, select_xyz):
 rpn_train_feed = rpn_generator(train_data, anchors, hyper_params)
 rpn_val_feed = rpn_generator(val_data, anchors, hyper_params)
 
-
 #%% RPN MODEL with VGG-16
 from tensorflow.keras.applications.vgg16 import VGG16
 from tensorflow.keras.layers import Conv2D
 from tensorflow.keras.models import Model, Sequential
+
+
+# tf.keras.model(tf.random.uniform((1, 500, 500, 3)))
 
 img_size = hyper_params['img_size']
 base_model = VGG16(include_top=False, input_shape=(img_size, img_size, 3))
@@ -321,34 +324,40 @@ rpn_reg_output.shape
 rpn_model = Model(inputs=base_model.input, outputs=[rpn_reg_output, rpn_cls_output])
 # rpn model 구축
 
+rpn_model.summary()
 # feature_extractor 를 왜 return ?
 
 #%% Regression Loss Function
-def reg_loss(*args):
+def rpn_reg_loss(*args):
     y_true, y_pred = args if len(args) == 2 else args[0]
-    y_pred = tf.reshape(y_pred, (tf.shape(y_pred)[0], -1, 4))
+    y_pred = tf.reshape(y_pred, shape=[tf.shape(y_pred)[0], -1, 4])
     #
     loss_fn = tf.losses.Huber(reduction=tf.losses.Reduction.NONE)
-    # Huber?
+    # Huber : SmoothL1 loss function
 
     loss_for_all = loss_fn(y_true, y_pred)
     loss_for_all = tf.reduce_sum(loss_for_all, axis=-1)
-    # reduce sum?
+    # sum of SmoothL1
     
     pos_cond = tf.reduce_any(tf.not_equal(y_true, tf.constant(0.0)), axis=-1)
     # tf.reduce_any?
     
     pos_mask = tf.cast(pos_cond, dtype=tf.float32)
+    # p*_i
     
     #
     loc_loss = tf.reduce_sum(pos_mask * loss_for_all)
+
     total_pos_bboxes = tf.maximum(1.0, tf.reduce_sum(pos_mask))
+
     return loc_loss / total_pos_bboxes
 
 #%% Objectness Loss Function
 def rpn_cls_loss(*args):
     y_true, y_pred = args if len(args) == 2 else args[0]
+
     indices = tf.where(tf.not_equal(y_true, tf.constant(-1.0, dtype=tf.float32)))
+
     target = tf.gather_nd(y_true, indices)
     output = tf.gather_nd(y_pred, indices)
     # tf.gather_nd ?
@@ -357,4 +366,35 @@ def rpn_cls_loss(*args):
     return lf(target, output)
 
 
+# %% Training
+import math
+import os
+from tensorflow.keras.callbacks import ModelCheckpoint
+
+rpn_model.compile(optimizer=tf.optimizers.Adam(learning_rate=1e-5),
+                  loss=[rpn_reg_loss, rpn_cls_loss])
+
+main_path = "trained"
+if not os.path.exists(main_path):
+    os.makedirs(main_path)
+rpn_model_path = os.path.join(main_path, "{}_{}_model_weights.h5".format("rpn", "vgg16"))
+
+checkpoint_callback = ModelCheckpoint(rpn_model_path, monitor="val_loss", save_best_only=True, save_weights_only=True)
+
+step_size_train = math.ceil(train_total_items / batch_size)
+step_size_val = math.ceil(val_total_items / batch_size)
+
+#%%
+tmp = next(iter(rpn_train_feed))
+rpn_model.fit(rpn_train_feed,
+              steps_per_epoch=step_size_train,
+              validation_data=rpn_val_feed,
+              validation_steps=step_size_val,
+              epochs=epochs)
 # %%
+img, (bbox_deltas, bbox_labels) = next(iter(rpn_train_feed))
+y_true, y_pred = args if len(args) == 2 else args[0]
+y_true = bbox_deltas
+y_pred = rpn_model(img)
+y_pred[1]
+rpn_reg_loss(y_true, y_pred[1])
