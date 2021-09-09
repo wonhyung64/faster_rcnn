@@ -26,8 +26,8 @@ hyper_params["anchor_count"] = len(hyper_params["anchor_ratios"]) * len(hyper_pa
 #%% DATA IMPORT
 import tensorflow_datasets as tfds
 
-train_data, dataset_info = tfds.load("voc/2006", split="train+validation", data_dir = "~tensorflow_datasets", with_info=True)
-val_data, _ = tfds.load("voc/2006", split="test", data_dir = "~tensorflow_datasets", with_info=True)
+train_data, dataset_info = tfds.load("voc/2007", split="train+validation", data_dir = "~tensorflow_datasets", with_info=True)
+val_data, _ = tfds.load("voc/2007", split="test", data_dir = "~tensorflow_datasets", with_info=True)
 # under bar 로 데이터를 불러오지 않기
 train_total_items = dataset_info.splits["train"].num_examples + dataset_info.splits["validation"].num_examples
 val_total_items = dataset_info.splits["test"].num_examples
@@ -62,10 +62,10 @@ for data in val_data.take(1):
 hyper_params["total_labels"] = len(labels) + 1
 
 #%%
-# for image_data in train_data.take(1):
-#     img = image_data['image']
-#     gt_boxes = image_data['objects']['bbox']
-#     gt_labels = tf.cast(image_data['objects']['label'] + 1, tf.int32)
+for image_data in train_data.take(1):
+    img = image_data['image']
+    gt_boxes = image_data['objects']['bbox']
+    gt_labels = tf.cast(image_data['objects']['label'] + 1, tf.int32)
 #%% DATA PREPROCESSING DEF
 def preprocessing(image_data, final_height, final_width, apply_augmentation=False, evaluate=False):
     img = image_data['image']
