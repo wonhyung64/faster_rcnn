@@ -379,7 +379,7 @@ def rpn_reg_loss(*args):
 
     learning_rate = 10
 
-    return loc_loss / total_pos_bboxes
+    return loc_loss / total_pos_bboxes * learning_rate
 
 
 #%% Objectness Loss Function
@@ -400,7 +400,7 @@ def rpn_cls_loss(*args):
 rpn_model.compile(optimizer=tf.optimizers.Adam(learning_rate=1e-5),
                   loss=[rpn_reg_loss, rpn_cls_loss])
 
-main_path = 'C:/Users/USER/Documents/GitHub/faster_rcnn/rpn'
+main_path = "C:\Users\USER\Documents\GitHub\\faster_rcnn"
 if not os.path.exists(main_path):
     os.makedirs(main_path)
 rpn_model_path = os.path.join(main_path, "{}_{}_model_weights.h5".format("rpn", "vgg16"))
@@ -416,8 +416,7 @@ rpn_model.fit(rpn_train_feed,
               steps_per_epoch=step_size_train,
               validation_data=rpn_val_feed,
               validation_steps=step_size_val,
-              epochs=50,
-              callbacks=[checkpoint_callback])
+              epochs=epochs)
 # %%
 # img, (bbox_deltas, bbox_labels) = next(iter(rpn_train_feed))
 # # y_, y_pred = args if len(args) == 2 else args[0]
