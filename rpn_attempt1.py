@@ -22,14 +22,16 @@ hyper_params = {"img_size": 500,
 
 hyper_params["anchor_count"] = len(hyper_params["anchor_ratios"]) * len(hyper_params["anchor_scales"])
 
+
 #%% DATA IMPORT
 import tensorflow_datasets as tfds
 
-train_data, dataset_info = tfds.load("voc/2007", split="train+validation", data_dir = "~tensorflow_datasets", with_info=True)
-val_data, _ = tfds.load("voc/2007", split="test", data_dir = "~tensorflow_datasets", with_info=True)
+train_data, dataset_info = tfds.load("voc/2006", split="train+validation", data_dir = "~tensorflow_datasets", with_info=True)
+val_data, _ = tfds.load("voc/2006", split="test", data_dir = "~tensorflow_datasets", with_info=True)
 # under bar 로 데이터를 불러오지 않기
 train_total_items = dataset_info.splits["train"].num_examples + dataset_info.splits["validation"].num_examples
 val_total_items = dataset_info.splits["test"].num_examples
+
 
 #%% EDA
 import matplotlib.pyplot as plt
