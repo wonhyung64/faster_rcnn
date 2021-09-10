@@ -1,7 +1,17 @@
 #%%
+import os
+import matplotlib.pyplot as plt
 import tensorflow as tf
+import tensorflow_datasets as tfds
+
 from tensorflow.python.keras.backend import set_value
+from tensorflow.keras.applications.vgg16 import VGG16
+from tensorflow.keras.layers import Conv2D
+from tensorflow.keras.models import Model, Sequential
+
 from utils import data_utils, bbox_utils
+
+
 # %%
 batch_size = 4
 use_custom_images = False
@@ -9,9 +19,6 @@ custom_image_path = "data/images"
 
 load_weights_from_frcnn = False
 
-backbone = 'vgg16'
-
-#%%
 hyper_params = {'img_size' : 500,
                 'feature_map_shape' : 31,
                 'anchor_ratios' : [1., 2., 1./2.],
@@ -27,10 +34,9 @@ hyper_params = {'img_size' : 500,
                 }
 
 hyper_params['anchor_count'] = len(hyper_params['anchor_ratios']) * len(hyper_params['anchor_scales'])
+
+
 # %%
-import tensorflow_datasets as tfds
-
-
 # data_dir = 'E:\Data\\tensorflow_datasets'
 data_dir = 'C:\won\data\pascal_voc\\tensorflow_datasets'
 test_data, dataset_info = tfds.load(name='voc/2007', split='test', data_dir=data_dir, with_info=True)
@@ -48,12 +54,8 @@ test_data = test_data.map(lambda x : data_utils.preprocessing(x, img_size, img_s
 
 test_data = test_data.padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values)
 
-#%% Model
-import tensorflow as tf
-from tensorflow.keras.applications.vgg16 import VGG16
-from tensorflow.keras.layers import Conv2D
-from tensorflow.keras.models import Model, Sequential
 
+#%% Model
 base_model = VGG16(include_top=False, input_shape=(img_size, img_size, 3))
 feature_extractor = base_model.get_layer('block5_conv3')
 output = Conv2D(512, (3, 3), activation='relu', padding='same', name='rpn_conv')(feature_extractor.output)
@@ -63,8 +65,6 @@ rpn_model = Model(inputs=base_model.input, outputs=[rpn_reg_output, rpn_cls_outp
 
 
 # %%
-import os
-
 # main_path = "E:\Github\\faster_rcnn\\rpn"
 main_path = "C:/Users/USER/Documents/GitHub/faster_rcnn/rpn"
 model_path = os.path.join(main_path, "{}_{}_model_weights.h5".format('rpn', 'vgg16'))
@@ -74,9 +74,7 @@ anchors = bbox_utils.generate_anchors(hyper_params)
 
 
 #%%
-import matplotlib.pyplot as plt
-
-os.chdir("C:\won\\rpn_result_attempt1")
+os.chdir("C:\won\\rpn_result_attempt2")
 
 i = 0
 for image_data in test_data:

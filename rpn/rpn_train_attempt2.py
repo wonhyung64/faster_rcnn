@@ -119,7 +119,7 @@ val_data = val_data.padded_batch(batch_size, padded_shapes=data_shapes, padding_
 
 
 #%% ANCHOR
-anchors = generate_anchors(hyper_params)
+anchors = bbox_utils.generate_anchors(hyper_params)
 #%%
 # for image_data in train_data.take(1):
 #     img, gt_boxes, gt_labels = image_data
@@ -292,7 +292,7 @@ def rpn_reg_loss(*args):
     loss_for_all = tf.reduce_sum(loss_for_all, axis=-1)
     # sum of SmoothL1
     
-    pos_cond = tf.reduce_any(tf.not_equal(y_true[1], tf.constant(-1.0)), axis=-1)
+    pos_cond = tf.reduce_any(tf.not_equal(y_true[1], tf.constant(0.0)), axis=-1)
     # tf.reduce_any?
     
     pos_mask = tf.cast(pos_cond, dtype=tf.float32)
@@ -310,7 +310,7 @@ def rpn_reg_loss(*args):
 def rpn_cls_loss(*args):
     y_pred, y_true = args if len(args) == 2 else args[0]
 
-    indices = tf.where(tf.not_equal(y_true[1], tf.constant(0.0, dtype=tf.float32)))
+    indices = tf.where(tf.not_equal(y_true[1], tf.constant(-1.0, dtype=tf.float32)))
 
     target = tf.gather_nd(y_true[1], indices)
     output = tf.gather_nd(y_pred[1], indices)
@@ -327,7 +327,7 @@ rpn_model.compile(optimizer=tf.optimizers.Adam(learning_rate=1e-5),
 main_path = "C:/Users/USER/Documents/GitHub/faster_rcnn/rpn"
 if not os.path.exists(main_path):
     os.makedirs(main_path)
-rpn_model_path = os.path.join(main_path, "{}_{}_model_weights.h5".format("rpn", "vgg16"))
+rpn_model_path = os.path.join(main_path, "{}_{}_model_weights_attempt2.h5".format("rpn", "vgg16"))
 
 checkpoint_callback = ModelCheckpoint(rpn_model_path, monitor="val_loss", save_best_only=True, save_weights_only=True)
 
