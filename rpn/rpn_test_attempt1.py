@@ -1,5 +1,6 @@
 #%%
 import tensorflow as tf
+from tensorflow.python.keras.backend import set_value
 from utils import data_utils, bbox_utils
 # %%
 batch_size = 4
@@ -30,7 +31,8 @@ hyper_params['anchor_count'] = len(hyper_params['anchor_ratios']) * len(hyper_pa
 import tensorflow_datasets as tfds
 
 
-data_dir = 'E:\Data\\tensorflow_datasets'
+# data_dir = 'E:\Data\\tensorflow_datasets'
+data_dir = 'C:\won\data\pascal_voc\\tensorflow_datasets'
 test_data, dataset_info = tfds.load(name='voc/2007', split='test', data_dir=data_dir, with_info=True)
 
 labels = dataset_info.features['labels'].names
@@ -63,7 +65,8 @@ rpn_model = Model(inputs=base_model.input, outputs=[rpn_reg_output, rpn_cls_outp
 # %%
 import os
 
-main_path = "E:\Github\\faster_rcnn\\rpn"
+# main_path = "E:\Github\\faster_rcnn\\rpn"
+main_path = "C:/Users/USER/Documents/GitHub/faster_rcnn/rpn"
 model_path = os.path.join(main_path, "{}_{}_model_weights.h5".format('rpn', 'vgg16'))
 rpn_model.load_weights(model_path, by_name=True)
 
@@ -73,6 +76,9 @@ anchors = bbox_utils.generate_anchors(hyper_params)
 #%%
 import matplotlib.pyplot as plt
 
+os.chdir("C:\won\\rpn_result_attempt1")
+
+i = 0
 for image_data in test_data:
     imgs, _, _ = image_data
     rpn_bbox_deltas, rpn_labels = rpn_model.predict_on_batch(imgs)
@@ -106,7 +112,10 @@ for image_data in test_data:
     colors = tf.constant([[1, 0, 0, 1]], dtype=tf.float32)
     imgs_with_bb = tf.image.draw_bounding_boxes(imgs, selected_rpn_bboxes, colors)
     plt.figure()
-    # for img_with_bb in imgs_with_bb :
-        # plt.imshow(img_with_bb)
-        # plt.show()
+    file_layout = 'test_'
+    for img_with_bb in imgs_with_bb :
+        filename = file_layout + str(i) + '.png'
+        plt.imshow(img_with_bb)
+        plt.savefig(filename)
+        i += 1
 # %%
