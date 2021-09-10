@@ -351,7 +351,7 @@ rpn_reg_output.shape
 rpn_model = Model(inputs=base_model.input, outputs=[rpn_reg_output, rpn_cls_output])
 # rpn model 구축
 
-rpn_model.summary()
+# rpn_model.summary()
 # feature_extractor 를 왜 return ?
 
 
@@ -377,9 +377,7 @@ def rpn_reg_loss(*args):
 
     total_pos_bboxes = tf.maximum(1.0, tf.reduce_sum(pos_mask))
 
-    learning_rate = 10
-
-    return loc_loss / total_pos_bboxes * learning_rate
+    return loc_loss / total_pos_bboxes
 
 
 #%% Objectness Loss Function
@@ -400,7 +398,7 @@ def rpn_cls_loss(*args):
 rpn_model.compile(optimizer=tf.optimizers.Adam(learning_rate=1e-5),
                   loss=[rpn_reg_loss, rpn_cls_loss])
 
-main_path = "C:\Users\USER\Documents\GitHub\\faster_rcnn"
+main_path = "C:/Users/USER/Documents/GitHub/faster_rcnn/rpn"
 if not os.path.exists(main_path):
     os.makedirs(main_path)
 rpn_model_path = os.path.join(main_path, "{}_{}_model_weights.h5".format("rpn", "vgg16"))
@@ -416,7 +414,8 @@ rpn_model.fit(rpn_train_feed,
               steps_per_epoch=step_size_train,
               validation_data=rpn_val_feed,
               validation_steps=step_size_val,
-              epochs=epochs)
+              epochs=epochs,
+              callbacks=[checkpoint_callback])
 # %%
 # img, (bbox_deltas, bbox_labels) = next(iter(rpn_train_feed))
 # # y_, y_pred = args if len(args) == 2 else args[0]
