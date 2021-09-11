@@ -67,7 +67,7 @@ rpn_model = Model(inputs=base_model.input, outputs=[rpn_reg_output, rpn_cls_outp
 # %%
 # main_path = "E:\Github\\faster_rcnn\\rpn"
 main_path = "C:/Users/USER/Documents/GitHub/faster_rcnn/rpn"
-model_path = os.path.join(main_path, "{}_{}_model_weights.h5".format('rpn', 'vgg16'))
+model_path = os.path.join(main_path, "{}_{}_model_weights_attempt2.h5".format('rpn', 'vgg16'))
 rpn_model.load_weights(model_path, by_name=True)
 
 anchors = bbox_utils.generate_anchors(hyper_params)
