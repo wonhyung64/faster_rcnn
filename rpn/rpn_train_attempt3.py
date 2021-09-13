@@ -327,7 +327,7 @@ rpn_model.compile(optimizer=tf.optimizers.Adam(learning_rate=1e-5),
 main_path = "C:/Users/USER/Documents/GitHub/faster_rcnn/rpn"
 if not os.path.exists(main_path):
     os.makedirs(main_path)
-rpn_model_path = os.path.join(main_path, "{}_{}_model_weights_attempt2.h5".format("rpn", "vgg16"))
+rpn_model_path = os.path.join(main_path, "{}_{}_model_weights_attempt3.h5".format("rpn", "vgg16"))
 
 checkpoint_callback = ModelCheckpoint(rpn_model_path, monitor="val_loss", save_best_only=True, save_weights_only=True)
 
