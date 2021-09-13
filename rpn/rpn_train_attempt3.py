@@ -6,10 +6,7 @@
 
 import os
 import math
-
 import numpy as np
-import matplotlib.pyplot as plt
-
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
@@ -23,7 +20,6 @@ from utils import data_utils, bbox_utils
 #%% OPTION 
 batch_size = 8
 epochs = 5
-load_weights = False
 
 hyper_params = {"img_size": 500,
                 "feature_map_shape": 31,
@@ -45,43 +41,13 @@ hyper_params["anchor_count"] = len(hyper_params["anchor_ratios"]) * len(hyper_pa
 #%% DATA IMPORT
 train_data, dataset_info = tfds.load("voc/2007", split="train+validation", data_dir = "C:\won\data\pascal_voc\\tensorflow_datasets", with_info=True)
 val_data, _ = tfds.load("voc/2007", split="test", data_dir = "C:\won\data\pascal_voc\\tensorflow_datasets", with_info=True)
-# under bar 로 데이터를 불러오지 않기
 
 train_total_items = dataset_info.splits["train"].num_examples + dataset_info.splits["validation"].num_examples
 val_total_items = dataset_info.splits["test"].num_examples
 
-
-#%% EDA
-# dataset_info
-
 labels = dataset_info.features["labels"].names
-# labels
-
-# for data in train_data.take(1):
-#     image, label = data['image'], data['labels']
-#     print(image)
-#     print('Image size :', image.shape)
-#     plt.imshow(image.numpy())
-#     plt.axis('off')
-#     print('Label size :', label.shape)
-#     print("Label: %s, %s" % (labels[label.numpy()[0]], labels[label.numpy()[1]]))
-
-# for data in val_data.take(1):
-#     image, label = data['image'], data['labels']
-#     print('Image size :', image.shape)
-#     plt.imshow(image.numpy())
-#     plt.axis('off')
-#     print('Label size :', label.shape)
-#     print("Label: %s, %s" % (labels[label.numpy()[0]], labels[label.numpy()[1]]))
 
 hyper_params["total_labels"] = len(labels) + 1
-
-
-#%%
-# for image_data in train_data.take(1):
-#     img = image_data['image']
-#     gt_boxes = image_data['objects']['bbox']
-#     gt_labels = tf.cast(image_data['objects']['label'] + 1, tf.int32)
 
 
 #%% DATA PREPROCESSING
@@ -90,39 +56,17 @@ img_size = hyper_params["img_size"]
 train_data = train_data.map(lambda x : data_utils.preprocessing(x, img_size, img_size, apply_augmentation=True))
 val_data = val_data.map(lambda x : data_utils.preprocessing(x, img_size, img_size))
 
-
-#%%
-# for data in train_data.take(1):
-#     image, label = data[0], data[2]
-#     print('Image size :', image.shape)
-#     plt.imshow(image.numpy())
-#     plt.axis('off')
-#     print('Label size :', label.shape)
-#     print("Label: %s, %s" % (labels[label.numpy()[0]-1], labels[label.numpy()[1]-1]))
-
-# for data in val_data.take(1):
-#     image, label = data[0], data[2]
-#     print('Image size :', image.shape)
-#     plt.imshow(image.numpy())
-#     plt.axis('off')
-#     print('Label size :', label.shape)
-#     print("Label: %s, %s" % (labels[label.numpy()[0]-1], labels[label.numpy()[1]-1]))
-
-
-# %%
 data_shapes = ([None, None, None], [None, None], [None,])
 padding_values = (tf.constant(0, tf.float32), tf.constant(0, tf.float32), tf.constant(-1, tf.int32))
-train_data = train_data.padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values)
-# batch size = 8 한번에 8개의 사진을 사용
 
+train_data = train_data.padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values) # batch size = 8 한번에 8개의 사진을 사용
 val_data = val_data.padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values)
 
 
 #%% ANCHOR
 anchors = bbox_utils.generate_anchors(hyper_params)
-#%%
-# for image_data in train_data.take(1):
-#     img, gt_boxes, gt_labels = image_data
+
+
 #%% Generating Region Proposal DEF
 def rpn_generator(dataset, anchors, hyper_params):
     while True:
@@ -136,11 +80,10 @@ def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params):
     batch_size = tf.shape(gt_boxes)[0] # gt_boxes 는 [batch_size, 이미지 데이터 한장에 있는 라벨의 갯수(4개) , 좌표(4)]
     feature_map_shape = hyper_params['feature_map_shape'] # feature_map_shape = 31
     anchor_count = hyper_params['anchor_count'] # anchor_count = 3 * 3 
-    total_pos_bboxes = hyper_params['total_pos_bboxes'] # 이게 뭘 나타내는건지 알 수 없음.. 128
-    total_neg_bboxes = hyper_params['total_neg_bboxes'] # 이것도 마찬가지 .. 128
+    total_pos_bboxes = hyper_params['total_pos_bboxes'] 
+    total_neg_bboxes = hyper_params['total_neg_bboxes']
     variances = hyper_params['variances'] # variances 가 무슨값인지 알 수 없음
     
-
     # Generating IoU map
     bbox_y1, bbox_x1, bbox_y2, bbox_x2 = tf.split(anchors, 4, axis=-1) # C X C  X anchor_count 개의 reference anchors 의 x, y 좌표
     gt_y1, gt_x1, gt_y2, gt_x2 = tf.split(gt_boxes, 4, axis=-1) # gt_boxes에 있는 박스들 각각의 x, y 좌표
@@ -234,8 +177,6 @@ def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params):
     return bbox_deltas, bbox_labels
 
 
-# select_xyz = neg_count
-# mask = neg_mask
 def randomly_select_xyz_mask(mask, select_xyz):
     maxval = tf.reduce_max(select_xyz) * 10
     random_mask = tf.random.uniform(tf.shape(mask), minval=1, maxval=maxval, dtype=tf.int32)
@@ -278,7 +219,6 @@ rpn_model = Model(inputs=base_model.input, outputs=[rpn_reg_output, rpn_cls_outp
 # rpn model 구축
 
 # rpn_model.summary()
-# feature_extractor 를 왜 return ?
 
 
 #%% Regression Loss Function
@@ -297,7 +237,6 @@ def rpn_reg_loss(*args):
     
     pos_mask = tf.cast(pos_cond, dtype=tf.float32)
     # positive label
-    
     #
     loc_loss = tf.reduce_sum(pos_mask * loss_for_all)
 
@@ -335,20 +274,12 @@ step_size_train = math.ceil(train_total_items / batch_size)
 step_size_val = math.ceil(val_total_items / batch_size)
 
 #%%
-# tmp = next(iter(rpn_train_feed))
 rpn_model.fit(rpn_train_feed,
               steps_per_epoch=step_size_train,
               validation_data=rpn_val_feed,
               validation_steps=step_size_val,
               epochs=epochs,
               callbacks=[checkpoint_callback])
-# %%
-# img, (bbox_deltas, bbox_labels) = next(iter(rpn_train_feed))
-# # y_, y_pred = args if len(args) == 2 else args[0]
-# y_pred = img 
-# y_true = (bbox_deltas, bbox_labels)
-# y_pred[1]
-# rpn_reg_loss(y_true, y_pred)
 
 
 
