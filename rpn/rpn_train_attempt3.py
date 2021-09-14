@@ -112,7 +112,7 @@ def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params):
     merged_iou_map = tf.reduce_max(iou_map, axis=2) 
     # 8장의 사진 에서 하나의 reference anchor와 4개의 gt_boxes 들 중 가장 높은값만 남기기
     #
-    pos_mask = tf.greater(merged_iou_map, 0.7)
+    pos_mask = tf.greater(merged_iou_map, 0.6)
     # 각 사진에서 가장 높은 IoU가 threshold 보다 높은지 
     #
     valid_indices_cond = tf.not_equal(gt_labels, -1)
@@ -137,7 +137,7 @@ def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params):
     # 8장의 pos_mask 에 대해서 각각 true의 개수 반환
     neg_count = (total_pos_bboxes + total_neg_bboxes) - pos_count
     
-    neg_mask = tf.logical_and(tf.less(merged_iou_map, 0.3), tf.logical_not(pos_mask))
+    neg_mask = tf.logical_and(tf.less(merged_iou_map, 0.2), tf.logical_not(pos_mask))
     # 8장의 사진에서 Iou가 0.3보다 작고 pos_mask가 false인 부분만 False
     neg_mask = randomly_select_xyz_mask(neg_mask, neg_count)
     #
@@ -228,7 +228,7 @@ def rpn_reg_loss(*args):
     loss_fn = tf.losses.Huber(reduction=tf.losses.Reduction.NONE)
     # Huber : SmoothL1 loss function
 
-    loss_for_all = loss_fn(y_true[0], y_pred[0])
+    loss_for_all = loss_fn(y_pred[0], y_true[0])
     loss_for_all = tf.reduce_sum(loss_for_all, axis=-1)
     # sum of SmoothL1
     
@@ -282,6 +282,9 @@ rpn_model.fit(rpn_train_feed,
               callbacks=[checkpoint_callback])
 
 
+#%%
+# y_true = next(iter(rpn_train_feed))
 
-
-
+# y_true[1]
+# y_pred = rpn_train_feed
+# y_pred[0]
