@@ -9,31 +9,17 @@ from tensorflow.keras.applications.vgg16 import VGG16
 from tensorflow.keras.layers import Conv2D
 from tensorflow.keras.models import Model, Sequential
 
-from utils import data_utils, bbox_utils
+from utils import data_utils, bbox_utils, hyper_params_utils
 
 
 # %%
 batch_size = 4
-use_custom_images = False
-custom_image_path = "data/images"
 
-load_weights_from_frcnn = False
-
-hyper_params = {'img_size' : 500,
-                'feature_map_shape' : 31,
-                'anchor_ratios' : [1., 2., 1./2.],
-                'anchor_scales' : [128, 256, 512],
-                'pre_nms_topn' : 6000,
-                'train_nms_topn' : 1500,
-                'test_nms_topn' : 300,
-                'nms_iou_threshold' : 0.7,
-                'total_pos_bboxes' : 128,
-                'total_neg_bboxes' : 128,
-                'pooling_size' : (7, 7),
-                'variances' : [0.1, 0.1, 0.2, 0.2],
-                }
+hyper_params = hyper_params_utils.get_hyper_params()
 
 hyper_params['anchor_count'] = len(hyper_params['anchor_ratios']) * len(hyper_params['anchor_scales'])
+
+attempt = str(hyper_params["attempt"])
 
 
 # %%
@@ -67,14 +53,15 @@ rpn_model = Model(inputs=base_model.input, outputs=[rpn_reg_output, rpn_cls_outp
 # %%
 # main_path = "E:\Github\\faster_rcnn\\rpn"
 main_path = "C:/Users/USER/Documents/GitHub/faster_rcnn/rpn"
-model_path = os.path.join(main_path, "{}_{}_model_weights_attempt3.h5".format('rpn', 'vgg16'))
+model_path = os.path.join(main_path, "{}_{}_model_weights_attempt{}.h5".format('rpn', 'vgg16', attempt))
 rpn_model.load_weights(model_path, by_name=True)
 
 anchors = bbox_utils.generate_anchors(hyper_params)
 
 
 #%%
-os.chdir("C:\won\\rpn_result_attempt5")
+result_dir = "C:\won\\rpn_result_attempt" + attempt
+os.mkdir(result_dir)
 
 i = 0
 for image_data in test_data:
