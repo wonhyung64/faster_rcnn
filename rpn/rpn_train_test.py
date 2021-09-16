@@ -43,8 +43,6 @@ labels = dataset_info.features["labels"].names
 
 hyper_params["total_labels"] = len(labels) + 1
 
-pos_threshold = hyper_params["pos_threshold"]
-neg_threshold = hyper_params["neg_threshold"]
 
 #%% DATA PREPROCESSING
 img_size = hyper_params["img_size"]
@@ -63,7 +61,6 @@ val_data = val_data.padded_batch(batch_size, padded_shapes=data_shapes, padding_
 anchors = bbox_utils.generate_anchors(hyper_params)
 
 
-#%% Generating Region Proposal DEF
 #%% Generating Region Proposal
 rpn_train_feed = rpn_utils.rpn_generator(train_data, anchors, hyper_params)
 rpn_val_feed = rpn_utils.rpn_generator(val_data, anchors, hyper_params)

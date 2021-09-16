@@ -21,7 +21,9 @@ def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params):
     total_pos_bboxes = hyper_params['total_pos_bboxes'] 
     total_neg_bboxes = hyper_params['total_neg_bboxes']
     variances = hyper_params['variances'] # variances 가 무슨값인지 알 수 없음
-    
+    pos_threshold = hyper_params["pos_threshold"]
+    neg_threshold = hyper_params["neg_threshold"]
+
     # Generating IoU map
     bbox_y1, bbox_x1, bbox_y2, bbox_x2 = tf.split(anchors, 4, axis=-1) # C X C  X anchor_count 개의 reference anchors 의 x, y 좌표
     gt_y1, gt_x1, gt_y2, gt_x2 = tf.split(gt_boxes, 4, axis=-1) # gt_boxes에 있는 박스들 각각의 x, y 좌표
