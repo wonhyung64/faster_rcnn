@@ -122,3 +122,6 @@ if mode == 'training':
     rpn_cls_actuals = Input(shape=(None, None, hyper_params['anchor_count']), name='input_rpn_cls_actuals', dtype=tf.float32)
     rpn_reg_actuals = Input(shape=(None, 4), name='input_rpn_reg_actuals', dtype=tf.float32)
     frcnn_reg_actuals, frcnn_cls_actuals = RoIDelta(hyper_params, name='roi_deltas')([roi_bboxes, input_gt_boxes, input_gt_labels])
+
+loss_names = ['rpn_reg_loss', 'rpn_cls_loss', 'frcnn_reg_loss', 'frcnn_cls_loss']
+rpn_reg_loss_layer = Lambda()
