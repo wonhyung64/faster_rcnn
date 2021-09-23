@@ -135,11 +135,7 @@ def rpn_cls_loss(*args):
 
 # %% Training
 rpn_model.compile(optimizer=tf.optimizers.Adam(learning_rate=1e-5),
-                  loss={
-                      "rpn_reg_output": rpn_reg_loss(),
-                      "rpn_cls_output": rpn_cls_loss(),
-                  },
-)
+                  loss=[rpn_reg_loss, rpn_cls_loss])
 
 main_path = "C:/Users/USER/Documents/GitHub/faster_rcnn/rpn"
 if not os.path.exists(main_path):

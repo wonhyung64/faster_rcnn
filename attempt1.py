@@ -97,7 +97,7 @@ class RoIDelta(layer):
         self.hyper_params = hyper_params
 
 #%% Faster R-CNN Model
-from tensoflow.keras.layers import Layer, Lambda, Input, Conv2D, TimeDistributed, Dense, Flatten, BatchNormalization, Dropout
+from tensorflow.keras.layers import Layer, Lambda, Input, Conv2D, TimeDistributed, Dense, Flatten, BatchNormalization, Dropout
 frcnn_model = fater_rcnn.get_model(feature_extractor, rpn_model, anchors, hyper_params)
 
 input_img = rpn_model.input
