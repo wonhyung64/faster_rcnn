@@ -92,7 +92,7 @@ rpn_reg_output.shape
 rpn_model = Model(inputs=base_model.input, outputs=[rpn_reg_output, rpn_cls_output])
 # rpn model 구축
 
-# rpn_model.summary()
+rpn_model.summary()
 
 
 #%% Regression Loss Function
