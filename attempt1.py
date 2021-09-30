@@ -192,8 +192,9 @@ class RoIDelta(Layer):
             roi_bboxes = inputs[0]
             gt_boxes = inputs[1]
             gt_labels = inputs[2]
-            total_labels = self.hyper_params["total_pos_labels"]
-            total_pos_bboxes = self.hyper_params["total_neg_labels"]
+            total_labels = self.hyper_params["total_labels"]
+            total_pos_bboxes = self.hyper_params["total_pos_labels"]
+            total_neg_bboxes = self.hyper_params["total_neg_labels"]
             variances = self.hyper_params["variances"]
             batch_size, total_bboxes = tf.shape(roi_bboxes)[0], tf.shape(roi_bboxes)[1]
             #
@@ -221,7 +222,7 @@ class RoIDelta(Layer):
             pos_mask = tf.greater(merged_iou_map, 0.5)
             pos_mask = rpn_utils.randomly_select_xyz_mask(pos_mask, tf.constant([total_pos_bboxes], dtype=tf.int32))
             #
-            neg_mask = tf.logical_and(tf.less(merged_iou_map, 0.5), tf.greater(merged_iou_map, 01))
+            neg_mask = tf.logical_and(tf.less(merged_iou_map, 0.5), tf.greater(merged_iou_map, 0.1))
             neg_mask = rpn_utils.randomly_select_xyz_mask(neg_mask, tf.constant([total_neg_bboxes], dtype=tf.int32))
             #
             gt_boxes_map = tf.gather(gt_boxes, max_indices_each_gt_box, batch_dims=1)
@@ -258,8 +259,61 @@ class RoIDelta(Layer):
             
             return tf.stop_gradient(roi_bbox_deltas), tf.stop_gradient(roi_bbox_labels)
         
+#%%
+def reg_loss(*args):
+    y_true, y_pred = args if len(args) == 2 else args[0]
+    #
+    loss_fn = tf.losses.Huber(reduction=tf.losses.Reduction.NONE)
+    # Huber : SmoothL1 loss function
+
+    loss_for_all = loss_fn(y_true[0], y_pred[0])
+    loss_for_all = tf.reduce_sum(loss_for_all, axis=-1)
+    # sum of SmoothL1
+    
+    pos_cond = tf.reduce_any(tf.not_equal(y_true[1], tf.constant(1.0)), axis=-1)
+    # tf.reduce_any?
+    
+    pos_mask = tf.cast(pos_cond, dtype=tf.float32)
+    # positive label
+    #
+    loc_loss = tf.reduce_sum(pos_mask * loss_for_all)
+
+    total_pos_bboxes = tf.maximum(1.0, tf.reduce_sum(pos_mask))
+
+    return loc_loss / total_pos_bboxes
+
+
+def rpn_cls_loss(*args):
+    y_true, y_pred = args if len(args) == 2 else args[0]
+    indices = tf.where(tf.not_epual(y_true[1], tf.constant(-1.0, dtype = tf.float32)))
+    
+    target = tf.gather_nd(y_true[1], indices)
+    output = tf.gather_nd(y_pred[1], indices)
+
+    lf = tf.losses.BinaryCrossentropy()
+    return lf(target, output)
+
+
+def frcnn_cls_loss(*args):
+    y_true, y_pred = args if len(args) == 2 else args[0]
+
+    loss_fn = tf.losses.CategoricalCrossentropy(reduction=tf.losses.Reduction.NONE)
+    
+    loss_for_all = loss_fn(y_true, y_pred)
+    
+    cond = tf.reduce_any(tf.not_equal(y_true, tf.constant(0.0)), axis=-1)
+    mask = tf.cast(cond, dtype=tf.float32)
+    
+    conf_loss = tf.reduce_sum(mask * loss_for_all)
+    total_boxes = tf.maximum(1.0, tf.reduces_sum(mask))
+    
+    return conf_loss / total_boxes
+
+
 #%% Faster R-CNN Model
 from tensorflow.keras.layers import Layer, Lambda, Input, Conv2D, TimeDistributed, Dense, Flatten, BatchNormalization, Dropout
+import tensorflow_datasets as tfds
+import math
 
 mode = 'training'
 
@@ -287,4 +341,53 @@ if mode == 'training':
     frcnn_reg_actuals, frcnn_cls_actuals = RoIDelta(hyper_params, name='roi_deltas')([roi_bboxes, input_gt_boxes, input_gt_labels])
 
     loss_names = ['rpn_reg_loss', 'rpn_cls_loss', 'frcnn_reg_loss', 'frcnn_cls_loss']
-    rpn_reg_loss_layer = Lambda()
+    rpn_reg_loss_layer = Lambda(reg_loss, name=loss_names[0])([rpn_reg_actuals, rpn_reg_predictions])
+    rpn_cls_loss_layer = Lambda(rpn_cls_loss, name=loss_names[1])([rpn_cls_actuals, rpn_cls_predictions])
+    frcnn_reg_loss_layer = Lambda(reg_loss, name=loss_names[2])([frcnn_reg_actuals, frcnn_reg_predictions])
+    frcnn_cls_loss_layer = Lambda(frcnn_cls_loss, name=loss_names[3])([frcnn_cls_actuals, frcnn_cls_predictions])
+    
+    frcnn_model = Model(inputs=[input_img, input_gt_boxes, input_gt_labels,
+                        rpn_reg_actuals, rpn_cls_actuals],
+                        outputs=[roi_bboxes, rpn_reg_predictions, rpn_cls_predictions,
+                        frcnn_reg_predictions, frcnn_cls_predictions,
+                        rpn_reg_loss_layer, rpn_cls_loss_layer,
+                        frcnn_reg_loss_layer, frcnn_cls_loss_layer])
+    
+    for layer_name in loss_names:
+        layer = frcnn_model.get_layer(layer_name)
+        frcnn_model.add_loss(layer.output)
+        frcnn_model.add_metric(layer.output, name=layer_name, aggregation="mean")
+        
+
+else:
+    bboxes, labels, scores = tfds.decode.Decoder(hyper_params["variances"], hyper_params["total_labels"], name="faster_rcnn_decoder")(
+                                    [roi_bboxes, frcnn_reg_predictions, frcnn_cls_predictions])
+    frcnn_model = Model(inputs=input_img, outputs=[bboxes, labels, scores])
+
+#%%
+frcnn_model.compile(optimizer=tf.optimizers.Adam(learning_rate=1e-5),
+                    loss=[None] * len(frcnn_model.output))
+
+#%%
+def init_model(model, hyper_params):
+    final_height, final_width = hyper_params["img_size"], hyper_params["img_size"]
+    img = tf.random.uniform((1, final_height, final_width, 3))
+    feature_map_shape = hyper_params["feature_map_shape"]
+    total_anchors = feature_map_shape * feature_map_shape * hyper_params["anchor_count"]
+    gt_boxes = tf.random.uniform((1, 1, 4))
+    gt_labels = tf.random.uniform((1, 1), maxval=hyper_params["total_lagbels"], dtype=tf.int32)
+    bbox_deltas = tf.random.uniform((1, total_anchors, 4))
+    bbox_labels = tf.random.uniform((1, feature_map_shape, feature_map_shape, hyper_params["anchor_count"]), maxval=1, dtype=tf.float32)
+    model([img, gt_boxes, gt_labels, bbox_deltas, bbox_labels])
+
+
+#%%
+step_size_train = math.ceil(train_total_items / batch_size)
+step_size_val = math.ceil(val_total_items, batch_size)
+#%%
+frcnn_model.fit(frcnn_train_feed,
+                steps_per_epoch=step_size_train,
+                validation_data=frcnn_cal_feed,
+                validation_steps=step_size_val,
+                epochs=epochs,
+                )
