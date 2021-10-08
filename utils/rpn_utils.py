@@ -66,7 +66,7 @@ def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params):
     #
 
     scatter_bbox_indices = tf.stack([valid_indices[..., 0], valid_max_indices], 1)
-    # 8장의 사진 에서 라벨이 존재하는 사진의 index와 해당 라벨의 gt_box와 가장 높은 IoU를 가지는 reference acnhor의 index 반환 
+    # 8장의 사진 에서 라벨이 존재하는 사진의 index와 해당 라벨의 gt_box와 가장 높은 IoU를 가지는 reference anchor의 index 반환 
     max_pos_mask = tf.scatter_nd(indices=scatter_bbox_indices, updates=tf.fill((tf.shape(valid_indices)[0], ), True), shape=tf.shape(pos_mask))
     # 8장의 사진 각각의 reference anchors에서 gt_box와의 가장 높은 IoU 를 가지는 reference anchor의 index 만 True
     pos_mask = tf.logical_or(pos_mask, max_pos_mask)
