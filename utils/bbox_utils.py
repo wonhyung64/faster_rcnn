@@ -4,9 +4,6 @@ def generate_anchors(hyper_params):
     anchor_count = hyper_params['anchor_count']
     feature_map_shape = hyper_params['feature_map_shape']
 
-    anchor_count = 9
-    feature_map_shape = 31
-
     stride = 1 / feature_map_shape
 
     grid_coords_ctr = tf.cast(tf.range(0, feature_map_shape) / feature_map_shape + stride / 2, dtype=tf.float32)
