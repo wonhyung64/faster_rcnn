@@ -12,8 +12,8 @@ from tensorflow.keras.layers import Layer, Conv2D, Lambda, Input, TimeDistribute
 from utils import bbox_utils, data_utils, hyper_params_utils, rpn_utils
 #%% DATA IMPORT
 
-#data_dir = "E:\Data\\tensorflow_datasets"
-data_dir = "C:\won\data\pascal_voc\\tensorflow_datasets"
+data_dir = "E:\Data\\tensorflow_datasets"
+# data_dir = "C:\won\data\pascal_voc\\tensorflow_datasets"
 #
 train_data, dataset_info = tfds.load("voc/2007", split="train+validation", data_dir = data_dir, with_info=True)
 val_data, _ = tfds.load("voc/2007", split="test", data_dir = data_dir, with_info=True)
@@ -156,7 +156,7 @@ class RoIPooling(Layer):
         pooling_bboxes = tf.reshape(roi_bboxes, (row_size, 4))
         # (roi_1500 * batch_size_4, bbox_coordinate_4)
         #
-        feature_map.shape
+        # feature_map.shape
         pooling_feature_map = tf.image.crop_and_resize(
             feature_map,
             pooling_bboxes,
