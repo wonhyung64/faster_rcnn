@@ -359,19 +359,19 @@ frcnn_model.compile(optimizer=tf.optimizers.Adam(learning_rate=1e-5),
                     )
 
 #%%
-# def init_model(model, hyper_params):
-#     final_height, final_width = hyper_params["img_size"], hyper_params["img_size"]
-#     img = tf.random.uniform((1, final_height, final_width, 3))
-#     feature_map_shape = hyper_params["feature_map_shape"]
-#     total_anchors = feature_map_shape * feature_map_shape * hyper_params["anchor_count"]
-#     gt_boxes = tf.random.uniform((1, 1, 4))
-#     gt_labels = tf.random.uniform((1, 1), maxval=hyper_params["total_labels"], dtype=tf.int32)
-#     bbox_deltas = tf.random.uniform((1, feature_map_shape, feature_map_shape, hyper_params["anchor_count"] * 4))
-#     bbox_labels = tf.random.uniform((1, feature_map_shape, feature_map_shape, hyper_params["anchor_count"]), maxval=1, dtype=tf.float32)
-#     model([img, gt_boxes, gt_labels, bbox_deltas, bbox_labels])
+def init_model(model, hyper_params):
+    final_height, final_width = hyper_params["img_size"], hyper_params["img_size"]
+    img = tf.random.uniform((1, final_height, final_width, 3))
+    feature_map_shape = hyper_params["feature_map_shape"]
+    total_anchors = feature_map_shape * feature_map_shape * hyper_params["anchor_count"]
+    gt_boxes = tf.random.uniform((1, 1, 4))
+    gt_labels = tf.random.uniform((1, 1), maxval=hyper_params["total_labels"], dtype=tf.int32)
+    bbox_deltas = tf.random.uniform((1, feature_map_shape, feature_map_shape, hyper_params["anchor_count"] * 4))
+    bbox_labels = tf.random.uniform((1, feature_map_shape, feature_map_shape, hyper_params["anchor_count"]), maxval=1, dtype=tf.float32)
+    model([img, gt_boxes, gt_labels, bbox_deltas, bbox_labels])
 
-# #%%
-# init_model(frcnn_model, hyper_params)
+#%%
+init_model(frcnn_model, hyper_params)
 #%%
 step_size_train = math.ceil(train_total_items / batch_size)
 step_size_val = math.ceil(val_total_items/ batch_size)

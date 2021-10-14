@@ -1,5 +1,6 @@
 #%% MODULE IMPORT
 
+import os
 import math
 import tensorflow as tf
 import tensorflow_datasets as tfds
@@ -10,21 +11,24 @@ from tensorflow.keras.applications.vgg16 import VGG16
 from tensorflow.keras.models import Model, Sequential
 from tensorflow.keras.callbacks import ModelCheckpoint, TensorBoard
 from tensorflow.keras.layers import Layer, Conv2D, Lambda, Input, TimeDistributed, Dense, Flatten, BatchNormalization, Dropout
-from tensorflow.python.keras.backend import _preprocess_conv1d_input
 #
 from utils import bbox_utils, data_utils, hyper_params_utils, rpn_utils
+
 #%% DATA IMPORT
 
 #data_dir = "E:\Data\\tensorflow_datasets"
 data_dir = "C:\won\data\pascal_voc\\tensorflow_datasets"
 #
 train_data, dataset_info = tfds.load("voc/2007", split="train+validation", data_dir = data_dir, with_info=True)
+train_data
 val_data, _ = tfds.load("voc/2007", split="test", data_dir = data_dir, with_info=True)
 #
 train_total_items = dataset_info.splits["train"].num_examples + dataset_info.splits["validation"].num_examples
 val_total_items = dataset_info.splits["test"].num_examples
 #
 labels = dataset_info.features["labels"].names
+train_total_items
+val_total_items
 #
 #%% HYPER PARAMETERS
 
@@ -36,7 +40,7 @@ hyper_params["total_labels"] = len(labels) + 1 # background label
 #
 epochs = hyper_params['epochs']
 #
-batch_size = 4
+batch_size = 4 
 #
 img_size = hyper_params["img_size"]
 #%% DATA PREPROCESSING
@@ -242,7 +246,7 @@ class RoIDelta(Layer):
         roi_bbox_deltas = scatter_indices * tf.expand_dims(roi_bbox_deltas, -2)
         # roi_bbox_deltas = tf.reshape(roi_bbox_deltas, (batch_size, total_bboxes * total_labels, 4))
         # 
-        return roi_bbox_deltas, roi_bbox_labels
+        return tf.stop_gradient(roi_bbox_deltas), tf.stop_gradient(roi_bbox_labels)
 #
 #%%
 def region_reg_loss(pred, bbox_deltas, bbox_labels):
@@ -280,16 +284,18 @@ def dtn_reg_loss(pred, frcnn_reg_actuals, frcnn_cls_actuals):
     #
     loss_fn = tf.losses.Huber(reduction=tf.losses.Reduction.NONE)
     # Huber : SmoothL1 loss function
-    loss_for_all = loss_fn(pred, frcnn_reg_actuals)
+    loss_for_all = loss_fn(frcnn_reg_actuals, pred)
+    
+    pos_cond = tf.equal(frcnn_cls_actuals, tf.constant(1.0))
+    
+    pos_mask = tf.cast(pos_cond, dtype=tf.float32)
     
     # tf.reduce_any?
-    
+    loc_loss = tf.reduce_sum(pos_mask * loss_for_all) 
     # positive label
+    total_pos_bboxes = tf.reduce_sum(pos_mask)
     #
-    loc_loss = tf.reduce_sum(tf.multiply(frcnn_cls_actuals , loss_for_all))
-
-
-    return loc_loss * 0.001
+    return loc_loss / total_pos_bboxes 
 #%%
 def region_cls_loss(pred, bbox_labels):
 
@@ -364,49 +370,96 @@ frcnn_reg_actuals, frcnn_cls_actuals = RoIDelta(hyper_params, name='roi_deltas')
 frcnn_model = Model(inputs=[rpn_reg_pred, rpn_cls_pred, feature_map, input_gt_boxes, input_gt_labels],
                     outputs=[roi_bboxes, frcnn_reg_pred, frcnn_cls_pred, frcnn_reg_actuals, frcnn_cls_actuals]
                     )
-frcnn_model.summary()
+# frcnn_model.summary()
+#%%
+cur_dir = os.getcwd()
+ckpt_dir_name = 'checkpoints'
+model_dir_name1 = 'rpn'
+model_dir_name2 = 'frcnn'
+
+ckpt_dir = os.path.join(cur_dir, ckpt_dir_name, model_dir_name2)
+os.makedirs(ckpt_dir, exist_ok=True)
+
+checkpoint_prefix1 = os.path.join(ckpt_dir, model_dir_name1)
+checkpoint_prefix2 = os.path.join(ckpt_dir, model_dir_name2)
+
+checkpoint1 = tf.train.Checkpoint(model=rpn_model)
+checkpoint2 = tf.train.Checkpoint(model=frcnn_model)
+
 #%%
 
 optimizer = keras.optimizers.Adam(learning_rate=1e-5)
+#%%
+
+@tf.function
+def train_step(img, gt_boxes, gt_labels, bbox_deltas, bbox_labels):
+    with tf.GradientTape(persistent=True) as tape:
+        rpn_pred = rpn_model(img, training=True)
+        
+        rpn_reg_loss = region_reg_loss(rpn_pred[0], bbox_deltas, bbox_labels)
+        rpn_cls_loss = region_cls_loss(rpn_pred[1], bbox_labels)
+        rpn_loss = rpn_reg_loss + rpn_cls_loss
+        
+        # rpn_reg_pred = tf.stop_gradient(rpn_pred[0])
+        # rpn_cls_pred = tf.stop_gradient(rpn_pred[1])
+        # feature_map = tf.stop_gradient(rpn_pred[2])
+
+        frcnn_pred = frcnn_model([rpn_pred[0], rpn_pred[1], rpn_pred[2], gt_boxes, gt_labels], training=True)
+
+        # frcnn_pred = frcnn_model([rpn_reg_pred, rpn_cls_pred, feature_map, gt_boxes, gt_labels], training=True)
+
+        frcnn_reg_loss = dtn_reg_loss(frcnn_pred[1], frcnn_pred[3], frcnn_pred[4])
+        frcnn_cls_loss = dtn_cls_loss(frcnn_pred[2], frcnn_pred[4])
+        frcnn_loss = frcnn_reg_loss + frcnn_cls_loss
+
+    grads_rpn = tape.gradient(rpn_loss, rpn_model.trainable_weights)
+    grads_frcnn = tape.gradient(frcnn_loss, frcnn_model.trainable_weights, unconnected_gradients=tf.UnconnectedGradients.ZERO)
+
+    optimizer.apply_gradients(zip(grads_rpn, rpn_model.trainable_weights))
+    optimizer.apply_gradients(zip(grads_frcnn, frcnn_model.trainable_weights))
+
+    return rpn_reg_loss, rpn_cls_loss, frcnn_reg_loss, frcnn_cls_loss
+
+# def test_step(img, gt_boxes, gt_labels, bbox_deltas, bbox_labels):
+#     val_rpn_pred = rpn_model(img, training=False)
+    
+        
+#     val_rpn_reg_loss = region_reg_loss(val_rpn_pred[0], bbox_deltas, bbox_labels)
+#     val_rpn_cls_loss = region_cls_loss(val_rpn_pred[1], bbox_labels)
+    
+#     # rpn_reg_pred = tf.stop_gradient(rpn_pred[0])
+#     # rpn_cls_pred = tf.stop_gradient(rpn_pred[1])
+#     # feature_map = tf.stop_gradient(rpn_pred[2])
+
+#     val_frcnn_pred = frcnn_model([val_rpn_pred[0], val_rpn_pred[1], val_rpn_pred[2], gt_boxes, gt_labels], training=True)
+
+#     # frcnn_pred = frcnn_model([rpn_reg_pred, rpn_cls_pred, feature_map, gt_boxes, gt_labels], training=True)
+
+#     val_frcnn_reg_loss = dtn_reg_loss(val_frcnn_pred[1], val_frcnn_pred[3], val_frcnn_pred[4])
+#     val_frcnn_cls_loss = dtn_cls_loss(val_frcnn_pred[2], val_frcnn_pred[4])
+        
+#     return val_rpn_reg_loss, val_rpn_cls_loss, val_frcnn_reg_loss, val_frcnn_cls_loss
+
+    
+#%%
 
 for epoch in range(epochs):
-    print("\nStart of epoch %d" % (epoch + 1,))
+    tf.print("\nStart of epoch %d" % (epoch + 1,))
     
     for step, ((img, gt_boxes, gt_labels, bbox_deltas, bbox_labels), ()) in enumerate(frcnn_train_feed):
-        
-        with tf.GradientTape(persistent=True) as tape:
-            rpn_pred = rpn_model(img, training=True)
+        try:
+            loss_value = train_step(img, gt_boxes, gt_labels, bbox_deltas, bbox_labels)
             
-            rpn_reg_loss = region_reg_loss(rpn_pred[0], bbox_deltas, bbox_labels)
-            rpn_cls_loss = region_cls_loss(rpn_pred[1], bbox_labels)
-            rpn_loss = rpn_reg_loss + rpn_cls_loss
-            
-            rpn_reg_pred = tf.stop_gradient(rpn_pred[0])
-            rpn_cls_pred = tf.stop_gradient(rpn_pred[1])
-            feature_map = tf.stop_gradient(rpn_pred[2])
-
-            # frcnn_pred = frcnn_model([rpn_pred[0], rpn_pred[1], rpn_pred[2], gt_boxes, gt_labels, bbox_deltas, bbox_labels], training=True)
-
-            frcnn_pred = frcnn_model([rpn_reg_pred, rpn_cls_pred, feature_map, gt_boxes, gt_labels, bbox_deltas, bbox_labels], training=True)
-
-            frcnn_reg_loss = dtn_reg_loss(frcnn_pred[1], frcnn_pred[3], frcnn_pred[4])
-            frcnn_cls_loss = dtn_cls_loss(frcnn_pred[2], frcnn_pred[4])
-            frcnn_loss = frcnn_reg_loss + frcnn_cls_loss
-
-            loss_value = rpn_loss + frcnn_loss
-
-        grads_rpn = tape.gradient(rpn_loss, rpn_model.trainable_weights)
-        grads_frcnn = tape.gradient(frcnn_loss, frcnn_model.trainable_weights, unconnected_gradients=tf.UnconnectedGradients.ZERO)
-
-        optimizer.apply_gradients(zip(grads_rpn, rpn_model.trainable_weights))
-        optimizer.apply_gradients(zip(grads_frcnn, frcnn_model.trainable_weights))
+            if step % 10 == 0:
+                tf.print(
+                    "Training loss (for one batch) at step %d: rpn_reg - %.4f, rpn_cls - %.4f, rpn - %.4f, frcnn_reg - %.4f, frcnn_cls - %.4f, frcnn - %.4f, loss - %.4f"
+                    % (step, float(loss_value[0]), float(loss_value[1]), float(loss_value[0] + loss_value[1]), float(loss_value[2]), float(loss_value[3]), float(loss_value[2] + loss_value[3]), float(loss_value[0] + loss_value[1] + loss_value[2] + loss_value[3]))
+                )
+                tf.print("Seen so far: %d samples" % ((step + 1) * batch_size))
+        except: break
         
-        if step % 10 == 0:
-            print(
-                "Training loss (for one batch) at step %d: rpn_reg - %.4f, rpn_cls - %.4f, rpn - %.4f, frcnn_reg - %.4f, frcnn_cls - %.4f, frcnn - %.4f, loss - %.4f"
-                % (step, float(rpn_reg_loss), float(rpn_cls_loss), float(rpn_loss), float(frcnn_reg_loss), float(frcnn_cls_loss), float(frcnn_loss), float(loss_value))
-            )
-            print("Seen so far: %d samples" % ((step + 1) * batch_size))
-            
-        
+    checkpoint1.save(file_prefix=checkpoint_prefix1)
+    checkpoint2.save(file_prefix=checkpoint_prefix2)
+    # for (img, gt_boxes, gt_labels, bbox_deltas, bbox_labels), () in frcnn_val_feed :
+        # 
 # %%
