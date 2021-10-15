@@ -20,15 +20,12 @@ from utils import bbox_utils, data_utils, hyper_params_utils, rpn_utils
 data_dir = "C:\won\data\pascal_voc\\tensorflow_datasets"
 #
 train_data, dataset_info = tfds.load("voc/2007", split="train+validation", data_dir = data_dir, with_info=True)
-train_data
 val_data, _ = tfds.load("voc/2007", split="test", data_dir = data_dir, with_info=True)
 #
 train_total_items = dataset_info.splits["train"].num_examples + dataset_info.splits["validation"].num_examples
 val_total_items = dataset_info.splits["test"].num_examples
 #
 labels = dataset_info.features["labels"].names
-train_total_items
-val_total_items
 #
 #%% HYPER PARAMETERS
 
@@ -61,7 +58,6 @@ frcnn_train_feed = rpn_utils.faster_rcnn_generator(train_data, anchors, hyper_pa
 frcnn_val_feed = rpn_utils.faster_rcnn_generator(val_data, anchors, hyper_params)
 #
 #%%
-
 class RoIBBox(Layer):
     
     def __init__(self, anchors, hyper_params, **kwargs):
@@ -122,10 +118,9 @@ class RoIBBox(Layer):
                                                              max_total_size = post_nms_topn,
                                                              iou_threshold=nms_iou_threshold)
         #
-        return tf.stop_gradient(roi_bboxes) # rpn과 classification 을 따로 학습 시키기 위해
+        return roi_bboxes # rpn과 classification 을 따로 학습 시키기 위해
 #    
 #%%
-
 class RoIPooling(Layer):
     #
     def __init__(self, hyper_params, **kwargs):
@@ -246,8 +241,10 @@ class RoIDelta(Layer):
         roi_bbox_deltas = scatter_indices * tf.expand_dims(roi_bbox_deltas, -2)
         # roi_bbox_deltas = tf.reshape(roi_bbox_deltas, (batch_size, total_bboxes * total_labels, 4))
         # 
-        return tf.stop_gradient(roi_bbox_deltas), tf.stop_gradient(roi_bbox_labels)
+        # return tf.stop_gradient(roi_bbox_deltas), tf.stop_gradient(roi_bbox_labels)
+        return roi_bbox_deltas, roi_bbox_labels
 #
+#%%
 #%%
 def region_reg_loss(pred, bbox_deltas, bbox_labels):
     #
@@ -321,9 +318,7 @@ def dtn_cls_loss(pred, true):
     total_boxes = tf.maximum(1.0, tf.reduce_sum(mask))
     
     return conf_loss / total_boxes
-
 #%% RPN Model
-
 base_model = VGG16(include_top=False, input_shape=(img_size, img_size, 3))
 #
 feature_extractor = base_model.get_layer("block5_conv3")
@@ -336,19 +331,18 @@ rpn_cls_output = Conv2D(hyper_params['anchor_count'], (1, 1), activation='sigmoi
 rpn_reg_output = Conv2D(hyper_params['anchor_count']*4, (1,1), activation='linear', name='rpn_reg')(output)
 #
 rpn_model = Model(inputs=base_model.input, outputs=[rpn_reg_output, rpn_cls_output, feature_extractor.output])
+
 # rpn_model.summary()
-
+#%% NMS
+NMS = RoIBBox(anchors, hyper_params, name='roi_bboxes')
+Delta = RoIDelta(hyper_params, name='roi_deltas')
 #%% Faster R-CNN Model
-
-rpn_reg_pred = Input(shape=(None, None, hyper_params['anchor_count'] * 4), name='input_reg', dtype=tf.float32)
+feature_map = Input(shape=(hyper_params['feature_map_shape'], 
+                           hyper_params['feature_map_shape'], 512), name='feature_map', dtype=tf.float32)
 #
-rpn_cls_pred = Input(shape=(None, None, hyper_params['anchor_count']), name='input_cls', dtype=tf.float32)
+nms_input = Input(shape=(1500, 4), name='nms_input', dtype=tf.float32)
 #
-feature_map = Input(shape=(None, None, 512), name='feature_map', dtype=tf.float32)
-#
-roi_bboxes = RoIBBox(anchors, hyper_params, name='roi_bboxes')([rpn_reg_pred, rpn_cls_pred])
-#
-roi_pooled = RoIPooling(hyper_params, name='roi_pooling')([feature_map, roi_bboxes])
+roi_pooled = RoIPooling(hyper_params, name='roi_pooling')([feature_map, nms_input])
 #
 output = TimeDistributed(Flatten(), name='frcnn_flatten')(roi_pooled)
 output = TimeDistributed(Dense(4096, activation='relu'), name='frcnn_fc1')(output)
@@ -358,67 +352,46 @@ output = TimeDistributed(Dropout(0.5), name='frcnn_dropout2')(output)
 #
 frcnn_cls_pred = TimeDistributed(Dense(hyper_params['total_labels'], activation='softmax'), name='frcnn_cls')(output)
 frcnn_reg_pred = TimeDistributed(Dense(84, activation='linear'), name='frcnn_reg')(output)
-#
-input_gt_boxes = Input(shape=(None, 4), name='input_gt_boxes', dtype=tf.float32)
-input_gt_labels = Input(shape=(None, ), name='input_gt_labels', dtype=tf.int32)
-#
-rpn_cls_actuals = Input(shape=(None, None, hyper_params['anchor_count']), name='input_rpn_cls_actuals', dtype=tf.float32)
-rpn_reg_actuals = Input(shape=(None, None, hyper_params["anchor_count"] * 4), name='input_rpn_reg_actuals', dtype=tf.float32)
-#
-frcnn_reg_actuals, frcnn_cls_actuals = RoIDelta(hyper_params, name='roi_deltas')([roi_bboxes, input_gt_boxes, input_gt_labels])
-#
-frcnn_model = Model(inputs=[rpn_reg_pred, rpn_cls_pred, feature_map, input_gt_boxes, input_gt_labels],
-                    outputs=[roi_bboxes, frcnn_reg_pred, frcnn_cls_pred, frcnn_reg_actuals, frcnn_cls_actuals]
+
+frcnn_model = Model(inputs=[feature_map, nms_input],
+                    outputs=[frcnn_reg_pred, frcnn_cls_pred]
                     )
 # frcnn_model.summary()
 #%%
-cur_dir = os.getcwd()
-ckpt_dir_name = 'checkpoints'
-model_dir_name1 = 'rpn'
-model_dir_name2 = 'frcnn'
-
-ckpt_dir = os.path.join(cur_dir, ckpt_dir_name, model_dir_name2)
-os.makedirs(ckpt_dir, exist_ok=True)
-
-checkpoint_prefix1 = os.path.join(ckpt_dir, model_dir_name1)
-checkpoint_prefix2 = os.path.join(ckpt_dir, model_dir_name2)
-
-checkpoint1 = tf.train.Checkpoint(model=rpn_model)
-checkpoint2 = tf.train.Checkpoint(model=frcnn_model)
-
+optimizer1 = keras.optimizers.Adam(learning_rate=1e-5)
+optimizer2 = keras.optimizers.Adam(learning_rate=1e-5)
 #%%
-
-optimizer = keras.optimizers.Adam(learning_rate=1e-5)
-#%%
-
 @tf.function
-def train_step(img, gt_boxes, gt_labels, bbox_deltas, bbox_labels):
+def train_step1(img, bbox_deltas, bbox_labels):
     with tf.GradientTape(persistent=True) as tape:
-        rpn_pred = rpn_model(img, training=True)
+        '''RPN'''
+        rpn_reg_output, rpn_cls_output, feature_map = rpn_model(img)
         
-        rpn_reg_loss = region_reg_loss(rpn_pred[0], bbox_deltas, bbox_labels)
-        rpn_cls_loss = region_cls_loss(rpn_pred[1], bbox_labels)
+        rpn_reg_loss = region_reg_loss(rpn_reg_output, bbox_deltas, bbox_labels)
+        rpn_cls_loss = region_cls_loss(rpn_cls_output, bbox_labels)
         rpn_loss = rpn_reg_loss + rpn_cls_loss
         
-        # rpn_reg_pred = tf.stop_gradient(rpn_pred[0])
-        # rpn_cls_pred = tf.stop_gradient(rpn_pred[1])
-        # feature_map = tf.stop_gradient(rpn_pred[2])
+    grads_rpn = tape.gradient(rpn_loss, rpn_model.trainable_weights)
 
-        frcnn_pred = frcnn_model([rpn_pred[0], rpn_pred[1], rpn_pred[2], gt_boxes, gt_labels], training=True)
+    optimizer1.apply_gradients(zip(grads_rpn, rpn_model.trainable_weights))
 
-        # frcnn_pred = frcnn_model([rpn_reg_pred, rpn_cls_pred, feature_map, gt_boxes, gt_labels], training=True)
+    return rpn_reg_loss, rpn_cls_loss, rpn_reg_output, rpn_cls_output, feature_map
 
-        frcnn_reg_loss = dtn_reg_loss(frcnn_pred[1], frcnn_pred[3], frcnn_pred[4])
-        frcnn_cls_loss = dtn_cls_loss(frcnn_pred[2], frcnn_pred[4])
+#%%
+@tf.function
+def train_step2(nms_output, roi_delta):
+    with tf.GradientTape(persistent=True) as tape:
+        '''Recognition'''
+        frcnn_pred = frcnn_model([feature_map, tf.stop_gradient(nms_output)], training=True)
+        
+        frcnn_reg_loss = dtn_reg_loss(frcnn_pred[0], roi_delta[0], roi_delta[1])
+        frcnn_cls_loss = dtn_cls_loss(frcnn_pred[1], roi_delta[1])
         frcnn_loss = frcnn_reg_loss + frcnn_cls_loss
 
-    grads_rpn = tape.gradient(rpn_loss, rpn_model.trainable_weights)
-    grads_frcnn = tape.gradient(frcnn_loss, frcnn_model.trainable_weights, unconnected_gradients=tf.UnconnectedGradients.ZERO)
+    grads_frcnn = tape.gradient(frcnn_loss, frcnn_model.trainable_weights)
+    optimizer2.apply_gradients(zip(grads_frcnn, frcnn_model.trainable_weights))
 
-    optimizer.apply_gradients(zip(grads_rpn, rpn_model.trainable_weights))
-    optimizer.apply_gradients(zip(grads_frcnn, frcnn_model.trainable_weights))
-
-    return rpn_reg_loss, rpn_cls_loss, frcnn_reg_loss, frcnn_cls_loss
+    return frcnn_reg_loss, frcnn_cls_loss
 
 # def test_step(img, gt_boxes, gt_labels, bbox_deltas, bbox_labels):
 #     val_rpn_pred = rpn_model(img, training=False)
@@ -440,33 +413,49 @@ def train_step(img, gt_boxes, gt_labels, bbox_deltas, bbox_labels):
         
 #     return val_rpn_reg_loss, val_rpn_cls_loss, val_frcnn_reg_loss, val_frcnn_cls_loss
 
-    
 #%%
-
 for epoch in range(epochs):
     tf.print("\nStart of epoch %d" % (epoch + 1,))
     
     for step, ((img, gt_boxes, gt_labels, bbox_deltas, bbox_labels), ()) in enumerate(frcnn_train_feed):
         try:
-            loss_value = train_step(img, gt_boxes, gt_labels, bbox_deltas, bbox_labels)
+            rpn_reg_loss, rpn_cls_loss, rpn_reg_output, rpn_cls_output, feature_map = train_step1(img, bbox_deltas, bbox_labels)
+            nms_output = NMS([rpn_reg_output, rpn_cls_output])
+            roi_delta = Delta([nms_output, gt_boxes, gt_labels])
+            frcnn_reg_loss, frcnn_cls_loss = train_step2(nms_output, roi_delta)
+
             
             if step % 10 == 0:
                 tf.print(
                     "Training loss (for one batch) at step %d: rpn_reg - %.4f, rpn_cls - %.4f, rpn - %.4f, frcnn_reg - %.4f, frcnn_cls - %.4f, frcnn - %.4f, loss - %.4f"
-                    % (step, float(loss_value[0]), float(loss_value[1]), float(loss_value[0] + loss_value[1]), float(loss_value[2]), float(loss_value[3]), float(loss_value[2] + loss_value[3]), float(loss_value[0] + loss_value[1] + loss_value[2] + loss_value[3]))
-                )
+                    % (step, float(rpn_reg_loss), float(rpn_cls_loss), float(rpn_reg_loss + rpn_cls_loss), float(frcnn_reg_loss), float(frcnn_cls_loss), float(frcnn_reg_loss + frcnn_cls_loss), float(rpn_reg_loss + rpn_cls_loss + frcnn_reg_loss + frcnn_cls_loss)))
+                
                 tf.print("Seen so far: %d samples" % ((step + 1) * batch_size))
         except: break
-        
-    checkpoint1.save(file_prefix=checkpoint_prefix1)
-    checkpoint2.save(file_prefix=checkpoint_prefix2)
-    # for (img, gt_boxes, gt_labels, bbox_deltas, bbox_labels), () in frcnn_val_feed :
-        # 
-# %%
+#%%
+rpn_model.save_weights(r'C:\Users\USER\Documents\GitHub\faster_rcnn\assets\rpn_weights\weights')
+frcnn_model.save_weights(r'C:\Users\USER\Documents\GitHub\faster_rcnn\assets\frcnn_weights\weights')
+#%%
+# (img, gt_boxes, gt_labels, bbox_deltas, bbox_labels), () = next(frcnn_train_feed)
+# #%%
+# output1 = rpn_model(img)
+# #%%
+# base_model = VGG16(include_top=False, input_shape=(img_size, img_size, 3))
+# #
+# feature_extractor = base_model.get_layer("block5_conv3")
+# feature_extractor.trainable = False
+# #
+# output = Conv2D(512,(3, 3), activation='relu', padding='same', name='rpn_conv')(feature_extractor.output)
+# #
+# rpn_cls_output = Conv2D(hyper_params['anchor_count'], (1, 1), activation='sigmoid', name='rpn_cls')(output)
+# #
+# rpn_reg_output = Conv2D(hyper_params['anchor_count']*4, (1,1), activation='linear', name='rpn_reg')(output)
+# #
+# rpn_model_imported = Model(inputs=base_model.input, outputs=[rpn_reg_output, rpn_cls_output, feature_extractor.output])
 
-main_path = "C:/Users/USER/Documents/GitHub/faster_rcnn"
-if not os.path.exists(main_path):
-    os.makedirs(main_path)
-rpn_model_path = os.path.join(main_path, "{}_{}_model_weights.h5".format("rpn", "vgg16"))
-rpn_model_path = os.path.join(main_path, "{}_{}_model_weights.h5".format("frcnn", "vgg16"))
-checkpoint_callback = ModelCheckpoint(rpn_model_path, monitor="val_loss", save_best_only=True, save_weights_only=True)
+# rpn_model_imported.load_weights(r'C:\Users\USER\Documents\GitHub\faster_rcnn\assets\rpn_weights\weights')
+# #%%
+# output2 = rpn_model_imported(img)
+# #%%
+# output1[0].numpy() - output2[0].numpy()
+#%%
