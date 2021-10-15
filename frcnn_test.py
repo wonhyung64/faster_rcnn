@@ -369,12 +369,13 @@ for i , image in enumerate(img):
     draw = ImageDraw.Draw(image)
     
     for index, bbox in enumerate(denormalized_box):
-        y1, x1, y2, x2 = tf.split(denormalized_box, 4, axis = -1)
+        y1, x1, y2, x2 = tf.split(bbox, 4, axis = -1)
         width = x2 - x1
         height = y2 - y1
         # if width <= 0 or height <=0:
         #     continue
-        label_index = tf.cast(final_labels[index], dtype=tf.int32)
+        final_labels = tf.reshape(final_labels, shape=(200,))
+        final_scores = tf.reshape(final_scores, shape=(200,))
         label_index = int(final_labels[index])
         color = tuple(colors[label_index].numpy())
         label_text = "{0} {1:0.3f}".format(labels[label_index], final_scores[index])
