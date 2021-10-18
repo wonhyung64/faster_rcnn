@@ -64,7 +64,7 @@ rpn_reg_output = Conv2D(hyper_params['anchor_count']*4, (1,1), activation='linea
 #
 rpn_model = Model(inputs=base_model.input, outputs=[rpn_reg_output, rpn_cls_output, feature_extractor.output])
 
-rpn_model.load_weights(r'C:\Users\USER\Documents\GitHub\faster_rcnn\assets\rpn_weights\weights')
+rpn_model.load_weights(r'C:\Users\USER\Documents\GitHub\faster_rcnn\assets\rpn_weights2\weights')
 
 #%%
 
@@ -339,7 +339,7 @@ frcnn_reg_pred = TimeDistributed(Dense(84, activation='linear'), name='frcnn_reg
 frcnn_model = Model(inputs=[feature_map, nms_input],
                     outputs=[frcnn_reg_pred, frcnn_cls_pred]
                     )
-frcnn_model.load_weights(r'C:\Users\USER\Documents\GitHub\faster_rcnn\assets\frcnn_weights\weights')
+frcnn_model.load_weights(r'C:\Users\USER\Documents\GitHub\faster_rcnn\assets\frcnn_weights2\weights')
 #%%
 (img, gt_boxes, gt_labels, bbox_deltas, bbox_labels), () = next(frcnn_test_feed)
 

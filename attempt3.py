@@ -433,8 +433,8 @@ for epoch in range(epochs):
                 tf.print("Seen so far: %d samples" % ((step + 1) * batch_size))
         except: break
 #%%
-rpn_model.save_weights(r'C:\Users\USER\Documents\GitHub\faster_rcnn\assets\rpn_weights\weights')
-frcnn_model.save_weights(r'C:\Users\USER\Documents\GitHub\faster_rcnn\assets\frcnn_weights\weights')
+rpn_model.save_weights(r'C:\Users\USER\Documents\GitHub\faster_rcnn\assets\rpn_weights2\weights')
+frcnn_model.save_weights(r'C:\Users\USER\Documents\GitHub\faster_rcnn\assets\frcnn_weights2\weights')
 #%%
 # (img, gt_boxes, gt_labels, bbox_deltas, bbox_labels), () = next(frcnn_train_feed)
 # #%%

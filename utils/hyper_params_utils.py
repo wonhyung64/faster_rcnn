@@ -13,9 +13,9 @@ def get_hyper_params():
                     "pooling_size": (7,7),
                     "variances": [0.1, 0.1, 0.2, 0.2],
                     "attempt" : 11,
-                    "epochs" : 10,
-                    "pos_threshold" : 0.7,
-                    "neg_threshold" : 0.3,
+                    "epochs" : 50,
+                    "pos_threshold" : 0.6,
+                    "neg_threshold" : 0.2,
                     }
     
     return hyper_params
