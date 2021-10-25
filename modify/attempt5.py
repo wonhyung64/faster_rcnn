@@ -16,8 +16,8 @@ from utils import bbox_utils, data_utils, hyper_params_utils, rpn_utils, model_u
 
 #%% DATA IMPORT
 
-#data_dir = "E:\Data\\tensorflow_datasets"
-data_dir = "C:\won\data\pascal_voc\\tensorflow_datasets"
+data_dir = "E:\Data\\tensorflow_datasets"
+# data_dir = "C:\won\data\pascal_voc\\tensorflow_datasets"
 #
 train_data, dataset_info = tfds.load("voc/2007", split="train+validation", data_dir = data_dir, with_info=True)
 val_data, _ = tfds.load("voc/2007", split="test", data_dir = data_dir, with_info=True)
@@ -33,6 +33,7 @@ hyper_params = hyper_params_utils.get_hyper_params()
 #
 hyper_params['anchor_count'] = len(hyper_params['anchor_ratios']) * len(hyper_params['anchor_scales'])
 #
+
 hyper_params["total_labels"] = len(labels) # background label
 #
 epochs = hyper_params['epochs']
@@ -319,50 +320,87 @@ def dtn_cls_loss(pred, true):
     
     return conf_loss / total_boxes
 #%% RPN Model
-base_model = VGG16(include_top=False, input_shape=(img_size, img_size, 3))
-#
-feature_extractor = base_model.get_layer("block5_conv3")
-feature_extractor.trainable = False
-#
-output = Conv2D(512,(3, 3), activation='relu', padding='same', name='rpn_conv')(feature_extractor.output)
-#
-rpn_cls_output = Conv2D(hyper_params['anchor_count'], (1, 1), activation='sigmoid', name='rpn_cls')(output)
-#
-rpn_reg_output = Conv2D(hyper_params['anchor_count']*4, (1,1), activation='linear', name='rpn_reg')(output)
-#
+class RPN(Model):
+    
+    def __init__(self, hyper_params):
+        super(RPN, self).__init__()
+        self.hyper_params = hyper_params
 
+        self.base_model = VGG16(include_top=False, input_shape=(self.hyper_params["img_size"], 
+                                                                self.hyper_params["img_size"],
+                                                                3))        
 
+        self.layer = self.base_model.get_layer('block5_conv3').output
+
+        self.feature_extractor = Model(inputs=self.base_model.input, outputs=self.layer)
+        self.feature_extractor.trainable = False
+
+        self.conv = Conv2D(filters=512, kernel_size=(3, 3), 
+                           activation='relu', padding='same', 
+                           name='rpn_conv')
+
+        self.rpn_cls_output = Conv2D(filters=self.hyper_params['anchor_count'], 
+                                     kernel_size=(1, 1), 
+                                     activation='sigmoid', 
+                                     name='rpn_cls')
+
+        self.rpn_reg_output = Conv2D(filters=self.hyper_params['anchor_count']*4, 
+                                     kernel_size=(1,1), 
+                                     activation='linear', 
+                                     name='rpn_reg')
+
+    def call(self,inputs):
+        feature_map = self.feature_extractor(inputs) 
+        x = self.conv(feature_map)
+        cls = self.rpn_cls_output(x)
+        reg = self.rpn_reg_output(x)
+        return [reg, cls, feature_map]
+
+#%% Faster R-CNN Model
+class Recog(Model):
+    def __init__(self, hyper_params):
+        super(Recog, self).__init__()
+        self.hyper_params = hyper_params
+        self.roi_pooled = RoIPooling(self.hyper_params, name='roi_pooling')
+        #
+        self.FC1 = TimeDistributed(Flatten(), name='frcnn_flatten')
+        self.FC2 = TimeDistributed(Dense(4096, activation='relu'), name='frcnn_fc1')
+        self.FC3 = TimeDistributed(Dropout(0.5), name='frcnn_dropout1')
+        self.FC4 = TimeDistributed(Dense(4096, activation='relu'), name='frcnn_fc2')
+        self.FC5 = TimeDistributed(Dropout(0.5), name='frcnn_dropout2')
+        #
+        self.cls = TimeDistributed(Dense(self.hyper_params['total_labels'], 
+                                         activation='softmax'), 
+                                         name='frcnn_cls')
+        self.reg = TimeDistributed(Dense(self.hyper_params['total_labels'] * 4, 
+                                         activation='linear'), 
+                                         name='frcnn_reg')
+
+    def call(self, inputs):
+        roi_pooled = self.roi_pooled(inputs)
+        fc1 = self.FC1(roi_pooled)
+        fc2 = self.FC2(fc1)
+        fc3 = self.FC3(fc2)
+        fc4 = self.FC4(fc3)
+        fc5 = self.FC5(fc4)
+        cls = self.cls(fc5)
+        reg = self.reg(fc5)
+        return [reg, cls]
 
 #%%
-rpn = model_utils.RPN(hyper_params)
-input_img = Input(shape=[500, 500, 3], dtype=tf.float32)
-rpn_model = Model(inputs=input_img, outputs=rpn)
+rpn_model = RPN(hyper_params)
+input_shape = (None, 500, 500, 3)
+rpn_model.build(input_shape)
 
-rpn_model.summary()
-#%% NMS
 NMS = RoIBBox(anchors, hyper_params, name='roi_bboxes')
 Delta = RoIDelta(hyper_params, name='roi_deltas')
-#%% Faster R-CNN Model
-feature_map = Input(shape=(hyper_params['feature_map_shape'], 
-                           hyper_params['feature_map_shape'], 512), name='feature_map', dtype=tf.float32)
-#
-nms_input = Input(shape=(1500, 4), name='nms_input', dtype=tf.float32)
-#
-roi_pooled = RoIPooling(hyper_params, name='roi_pooling')([feature_map, nms_input])
-#
-output = TimeDistributed(Flatten(), name='frcnn_flatten')(roi_pooled)
-output = TimeDistributed(Dense(4096, activation='relu'), name='frcnn_fc1')(output)
-output = TimeDistributed(Dropout(0.5), name='frcnn_dropout1')(output)
-output = TimeDistributed(Dense(4096, activation='relu'), name='frcnn_fc2')(output)
-output = TimeDistributed(Dropout(0.5), name='frcnn_dropout2')(output)
-#
-frcnn_cls_pred = TimeDistributed(Dense(hyper_params['total_labels'], activation='softmax'), name='frcnn_cls')(output)
-frcnn_reg_pred = TimeDistributed(Dense(hyper_params['total_labels'] * 4, activation='linear'), name='frcnn_reg')(output)
 
-frcnn_model = Model(inputs=[feature_map, nms_input],
-                    outputs=[frcnn_reg_pred, frcnn_cls_pred]
-                    )
-# frcnn_model.summary()
+frcnn_model = Recog(hyper_params)
+input_shape = [(None, hyper_params['feature_map_shape'], 
+                hyper_params['feature_map_shape'], 512), 
+               (None, hyper_params['train_nms_topn'], 4)]
+frcnn_model.build(input_shape)
+
 #%%
 optimizer1 = keras.optimizers.Adam(learning_rate=1e-5)
 optimizer2 = keras.optimizers.Adam(learning_rate=1e-5)
