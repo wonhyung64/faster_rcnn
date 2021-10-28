@@ -12,12 +12,11 @@ from tensorflow.keras.models import Model, Sequential
 from tensorflow.keras.callbacks import ModelCheckpoint, TensorBoard
 from tensorflow.keras.layers import Layer, Conv2D, Lambda, Input, TimeDistributed, Dense, Flatten, BatchNormalization, Dropout
 #
-from utils import bbox_utils, data_utils, hyper_params_utils, rpn_utils, model_utils
-
+from utils import bbox_utils, data_utils, hyper_params_utils, rpn_utils
 #%% DATA IMPORT
 
-data_dir = "E:\Data\\tensorflow_datasets"
-# data_dir = "C:\won\data\pascal_voc\\tensorflow_datasets"
+# data_dir = "E:\Data\\tensorflow_datasets"
+data_dir = "C:\won\data\pascal_voc"
 #
 train_data, dataset_info = tfds.load("voc/2007", split="train+validation", data_dir = data_dir, with_info=True)
 val_data, _ = tfds.load("voc/2007", split="test", data_dir = data_dir, with_info=True)
@@ -34,7 +33,7 @@ hyper_params = hyper_params_utils.get_hyper_params()
 hyper_params['anchor_count'] = len(hyper_params['anchor_ratios']) * len(hyper_params['anchor_scales'])
 #
 
-hyper_params["total_labels"] = len(labels) # background label
+hyper_params["total_labels"] = len(labels) + 1 # background label
 #
 epochs = hyper_params['epochs']
 #
@@ -181,12 +180,12 @@ class RoIDelta(Layer):
         total_pos_bboxes = self.hyper_params["total_pos_bboxes"]
         total_neg_bboxes = self.hyper_params["total_neg_bboxes"]
         variances = self.hyper_params["variances"]
-        batch_size, total_bboxes = tf.shape(roi_bboxes)[0], tf.shape(roi_bboxes)[1]
+        # batch_size, total_bboxes = tf.shape(roi_bboxes)[0], tf.shape(roi_bboxes)[1]
         #
         bbox_y1, bbox_x1, bbox_y2, bbox_x2 = tf.split(roi_bboxes, 4, axis=-1)
         gt_y1, gt_x1, gt_y2, gt_x2 = tf.split(gt_boxes, 4, axis=-1)
 
-        gt_area = tf.squeeze((gt_y2 - gt_y1) * (gt_x2 - gt_x2), axis=-1)
+        gt_area = tf.squeeze((gt_y2 - gt_y1) * (gt_x2 - gt_x1), axis=-1)
         bbox_area = tf.squeeze((bbox_y2 - bbox_y1) * (bbox_x2 - bbox_x1), axis=-1)
 
         x_top = tf.maximum(bbox_x1, tf.transpose(gt_x1, [0, 2, 1]))
@@ -235,7 +234,7 @@ class RoIDelta(Layer):
         delta_w = tf.where(tf.equal(gt_width, 0), tf.zeros_like(gt_width), tf.math.log(gt_width / bbox_width))
         delta_h = tf.where(tf.equal(gt_height, 0), tf.zeros_like(gt_height), tf.math.log(gt_height / bbox_height))
         
-        roi_bbox_deltas = tf.stack([delta_y, delta_x, delta_h, delta_w], axis=-1)
+        roi_bbox_deltas = tf.stack([delta_y, delta_x, delta_h, delta_w], axis=-1) / variances
         #
         roi_bbox_labels = tf.one_hot(expanded_gt_labels, total_labels) # 21개 클래스로 인코딩
         scatter_indices = tf.tile(tf.expand_dims(roi_bbox_labels, -1), (1, 1, 1, 4))
@@ -456,5 +455,5 @@ for epoch in range(epochs):
                 tf.print("Seen so far: %d samples" % ((step + 1) * batch_size))
         except: break
 #%%
-rpn_model.save_weights(r'C:\Users\USER\Documents\GitHub\faster_rcnn\assets\rpn_weights2\weights')
-frcnn_model.save_weights(r'C:\Users\USER\Documents\GitHub\faster_rcnn\assets\frcnn_weights2\weights')
+rpn_model.save_weights(r'C:\won\model_weights\rpn_weights\weights')
+frcnn_model.save_weights(r'C:\won\model_weights\frcnn_weights\weights')
