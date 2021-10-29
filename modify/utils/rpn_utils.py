@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 
 def rpn_generator(dataset, anchors, hyper_params):
@@ -8,13 +9,16 @@ def rpn_generator(dataset, anchors, hyper_params):
             yield img, (bbox_deltas, bbox_labels)
 
 def faster_rcnn_generator(dataset, anchors, hyper_params):
-    while True:
-        for image_data in dataset:
-            img, gt_boxes, gt_labels = image_data
-            bbox_deltas, bbox_labels = calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params)
-            yield (img, gt_boxes, gt_labels, bbox_deltas, bbox_labels), ()
+    chk_pos_num = []
+    data = []
+    for image_data in dataset:
+        img, gt_boxes, gt_labels = image_data
+        bbox_deltas, bbox_labels, chk_pos_num = calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params, chk_pos_num)
+        data.append([img, gt_boxes, gt_labels, bbox_deltas, bbox_labels, chk_pos_num])
+    return np.array(data)
 
-def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params):
+
+def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params, chk_pos_num):
     batch_size = tf.shape(gt_boxes)[0] # gt_boxes 는 [batch_size, 이미지 데이터 한장에 있는 라벨의 갯수(4개) , 좌표(4)]
     feature_map_shape = hyper_params['feature_map_shape'] # feature_map_shape = 31
     anchor_count = hyper_params['anchor_count'] # anchor_count = 3 * 3 
@@ -53,6 +57,7 @@ def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params):
     # 8장의 사진 에서 하나의 reference anchor와 4개의 gt_boxes 들 중 가장 높은값만 남기기
     #
     pos_mask = tf.greater(merged_iou_map, pos_threshold)
+    chk_pos_num = np.size(np.where(pos_mask[0] == True))
     # 각 사진에서 가장 높은 IoU가 threshold 보다 높은지 
     #
     valid_indices_cond = tf.not_equal(gt_labels, -1)
@@ -114,7 +119,7 @@ def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params):
     bbox_deltas = tf.reshape(bbox_deltas, (batch_size, feature_map_shape, feature_map_shape, anchor_count* 4))
     bbox_labels = tf.reshape(bbox_labels, (batch_size, feature_map_shape, feature_map_shape, anchor_count))
     
-    return bbox_deltas, bbox_labels
+    return bbox_deltas, bbox_labels, chk_pos_num
 
 
 def randomly_select_xyz_mask(mask, select_xyz):

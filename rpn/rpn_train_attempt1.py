@@ -22,7 +22,7 @@ load_weights = False
 hyper_params = {"img_size": 500,
                 "feature_map_shape": 31,
                 "anchor_ratios": [1., 2., 1./2.],
-                "anchor_scales": [128, 256, 512],
+                "anchor_scales": [64, 128, 256],
                 "pre_nms_topn": 6000,
                 "train_nms_topn": 1500,
                 "test_nms_topn": 300,
@@ -37,8 +37,8 @@ hyper_params["anchor_count"] = len(hyper_params["anchor_ratios"]) * len(hyper_pa
 
 
 #%% DATA IMPORT
-train_data, dataset_info = tfds.load("voc/2007", split="train+validation", data_dir = "C:\won\data\pascal_voc\\tensorflow_datasets", with_info=True)
-val_data, _ = tfds.load("voc/2007", split="test", data_dir = "C:\won\data\pascal_voc\\tensorflow_datasets", with_info=True)
+train_data, dataset_info = tfds.load("voc/2007", split="train+validation", data_dir = "C:\won\data\pascal_voc", with_info=True)
+val_data, _ = tfds.load("voc/2007", split="test", data_dir = "C:\won\data\pascal_voc", with_info=True)
 # under bar 로 데이터를 불러오지 않기
 
 train_total_items = dataset_info.splits["train"].num_examples + dataset_info.splits["validation"].num_examples
@@ -195,7 +195,7 @@ anchors = tf.clip_by_value(t=anchors, clip_value_min=0, clip_value_max=1) # tf.c
 # print(anchors)
 
 #%%
-# for image_data in train_data.take(1):
+# for image_data in train_data.take(2):
 #     img, gt_boxes, gt_labels = image_data
 #%% Generating Region Proposal DEF
 def rpn_generator(dataset, anchors, hyper_params):
@@ -204,6 +204,7 @@ def rpn_generator(dataset, anchors, hyper_params):
             img, gt_boxes, gt_labels = image_data
             bbox_deltas, bbox_labels = calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params)
             yield img, (bbox_deltas, bbox_labels)
+
 
 
 def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params):
