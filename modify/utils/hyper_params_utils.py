@@ -12,7 +12,7 @@ def get_hyper_params():
                     "total_neg_bboxes": 128,
                     "pooling_size": (7,7),
                     "variances": [0.1, 0.1, 0.2, 0.2],
-                    "epochs" : 50,
+                    "epochs" : 20,
                     "pos_threshold" : 0.5,
                     "neg_threshold" : 0.25,
                     }
