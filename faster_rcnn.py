@@ -21,13 +21,13 @@ hyper_params = {"img_size": 500,
                 "pre_nms_topn": 6000,
                 "train_nms_topn": 1500,
                 "test_nms_topn": 300,
-                "nms_iou_threshold": 0.7,
+                "nms_iou_threshold": 0.9,
                 "total_pos_bboxes": 128,
-                "total_neg_bboxes": 128,
+                "total_neg_bboxes": 64,
                 "pooling_size": (7,7),
                 "variances": [0.1, 0.1, 0.2, 0.2],
                 "iters" : 20000,
-                "pos_threshold" : 0.5,
+                "pos_threshold" : 0.6,
                 "neg_threshold" : 0.25,
                 "batch_size" : 16,
                 }
@@ -171,10 +171,6 @@ class RoIDelta(Layer):
         gt_boxes = inputs[1]
         gt_labels = inputs[2]
 
-        total_labels = hyper_params["total_labels"]
-        total_pos_bboxes = hyper_params["total_pos_bboxes"]
-        total_neg_bboxes = hyper_params["total_neg_bboxes"]
-
         total_labels = self.hyper_params["total_labels"]
         total_pos_bboxes = self.hyper_params["total_pos_bboxes"]
         total_neg_bboxes = self.hyper_params["total_neg_bboxes"]
@@ -203,9 +199,11 @@ class RoIDelta(Layer):
         merged_iou_map = tf.reduce_max(iou_map, axis=2)
         # 1500개의 roi_bbox 와의 iou가 가장 큰 gtbox 의 iou
         pos_mask = tf.greater(merged_iou_map, 0.5)
+        # sum(sum(tf.cast(pos_mask, tf.int32)))
         pos_mask = rpn_utils.randomly_select_xyz_mask(pos_mask, tf.constant([total_pos_bboxes], dtype=tf.int32))
         #
         neg_mask = tf.logical_and(tf.less(merged_iou_map, 0.5), tf.greater(merged_iou_map, 0.1))
+        # sum(sum(tf.cast(neg_mask, tf.int32)))
         neg_mask = rpn_utils.randomly_select_xyz_mask(neg_mask, tf.constant([total_neg_bboxes], dtype=tf.int32))
         #
         gt_boxes_map = tf.gather(gt_boxes, max_indices_each_gt_box, batch_dims=1)
@@ -215,7 +213,7 @@ class RoIDelta(Layer):
         # 1500개의 roi_bbox 와의 iou가 가장 큰 gtbox 의 class label 
         pos_gt_labels = tf.where(pos_mask, gt_labels_map, tf.constant(-1, dtype=tf.int32))
         neg_gt_labels = tf.cast(neg_mask, dtype=tf.int32)
-        expanded_gt_labels = pos_gt_labels + neg_gt_labels # IoU 가 ~0.1 은 -1, 0.1~0.5 는 0, 0.5~ 는 1 이상의 클래스
+        expanded_gt_labels = pos_gt_labels + neg_gt_labels # IoU 가 ~0.1 은 -1, 0.1~0.5 인 것 중 128개는 0, 0.5~ 중 128개는 1 이상의 클래스 나머지는 -1
         #
         bbox_width = roi_bboxes[..., 3] - roi_bboxes[..., 1]
         bbox_height = roi_bboxes[..., 2] - roi_bboxes[..., 0]
@@ -239,9 +237,7 @@ class RoIDelta(Layer):
         roi_bbox_labels = tf.one_hot(expanded_gt_labels, total_labels) # 21개 클래스로 인코딩
         scatter_indices = tf.tile(tf.expand_dims(roi_bbox_labels, -1), (1, 1, 1, 4))
         roi_bbox_deltas = scatter_indices * tf.expand_dims(roi_bbox_deltas, -2)
-        # roi_bbox_deltas = tf.reshape(roi_bbox_deltas, (batch_size, total_bboxes * total_labels, 4))
-        # 
-        # return tf.stop_gradient(roi_bbox_deltas), tf.stop_gradient(roi_bbox_labels)
+
         return roi_bbox_deltas, roi_bbox_labels
 #%%
 class Decoder(Layer):
@@ -336,23 +332,22 @@ def dtn_reg_loss(pred, frcnn_reg_actuals, frcnn_cls_actuals):
 
     pred = tf.reshape(pred, (batch_size, hyper_params['train_nms_topn'],
                                   hyper_params['total_labels'],4))
-    #
+    
     frcnn_reg_actuals = tf.reshape(frcnn_reg_actuals, (batch_size, hyper_params['train_nms_topn'],
                                   hyper_params['total_labels'],4))
-    #
+    
     loss_fn = tf.losses.Huber(reduction=tf.losses.Reduction.NONE)
-    # Huber : SmoothL1 loss function
+    
     loss_for_all = loss_fn(frcnn_reg_actuals, pred)
     
     pos_cond = tf.equal(frcnn_cls_actuals, tf.constant(1.0))
     
     pos_mask = tf.cast(pos_cond, dtype=tf.float32)
     
-    # tf.reduce_any?
     loc_loss = tf.reduce_sum(pos_mask * loss_for_all) 
-    # positive label
+    
     total_pos_bboxes = tf.reduce_sum(pos_mask)
-    #
+    
     return loc_loss / total_pos_bboxes * 0.5
 #%%
 def region_cls_loss(pred, bbox_labels):
@@ -360,22 +355,24 @@ def region_cls_loss(pred, bbox_labels):
     indices = tf.where(tf.not_equal(bbox_labels, tf.constant(-1.0, dtype = tf.float32)))
     
     target = tf.gather_nd(bbox_labels, indices)
+
     output = tf.gather_nd(pred, indices)
 
     lf = tf.losses.BinaryCrossentropy()
     return lf(target, output)
 #%%
 def dtn_cls_loss(pred, true):
-    # y_pred = tf.reshape(y_pred, (tf.shape(y_pred)[0], -1, 4))
 
     loss_fn = tf.losses.CategoricalCrossentropy(reduction=tf.losses.Reduction.NONE)
     
     loss_for_all = loss_fn(true, pred)
     
     cond = tf.reduce_any(tf.not_equal(true, tf.constant(0.0)), axis=-1)
+
     mask = tf.cast(cond, dtype=tf.float32)
     
     conf_loss = tf.reduce_sum(mask * loss_for_all)
+
     total_boxes = tf.maximum(1.0, tf.reduce_sum(mask))
     
     return conf_loss / total_boxes
@@ -517,9 +514,12 @@ def save_dict_to_file(dic,dict_dir):
 
 train_dir = r"C:\won\data\pascal_voc\voc2007_np\train_val\\"
 start_time = time.time()
+pos_num_lst = []
 for iter in range(iters):
     batch_data = np.array([np.load(train_dir + train_filename[i] + ".npy", allow_pickle=True) for i in list(np.random.randint(0, train_total_items, batch_size))])
     img, gt_boxes, gt_labels, bbox_deltas, bbox_labels, chk_pos_num = rpn_utils.faster_rcnn_generator(batch_data, anchors, hyper_params)
+    pos_num_lst.append(chk_pos_num)
+    
     rpn_reg_loss, rpn_cls_loss, rpn_reg_output, rpn_cls_output, feature_map = train_step1(img, bbox_deltas, bbox_labels)
     nms_output, _ = NMS([rpn_reg_output, rpn_cls_output])
     roi_delta = Delta([nms_output, gt_boxes, gt_labels])
@@ -532,7 +532,7 @@ print(
     % (float(rpn_reg_loss), float(rpn_cls_loss), float(rpn_reg_loss + rpn_cls_loss), float(frcnn_reg_loss), float(frcnn_cls_loss), float(frcnn_reg_loss + frcnn_cls_loss), float(rpn_reg_loss + rpn_cls_loss + frcnn_reg_loss + frcnn_cls_loss)))
 
 print("Time taken: %.2fs" % (time.time() - start_time))
-
+print("pos num mean : ", np.mean(pos_num_lst), "pos num std : ", np.std(pos_num_lst))
 #%%
 i = 1
 res_dir = r'C:\won\frcnn\atmp'
@@ -559,6 +559,10 @@ os.makedirs(res_dir + r'\res_frcnn')
 rpn_model.save_weights(res_dir + r'\rpn_weights\weights')
 frcnn_model.save_weights(res_dir + r'\frcnn_weights\weights')
 print("Weights Saved")
+
+# rpn_model.load_weights(res_dir + '3' + r'\rpn_weights\weights')
+# frcnn_model.load_weights(res_dir + '3' + r'\frcnn_weights\weights')
+
 
 #%%
 
