@@ -1,11 +1,11 @@
 #%% MODULE IMPORT
 import os
-import sys
 import time
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 #
+from tqdm import tqdm
 from PIL import ImageDraw
 from tensorflow import keras
 from tensorflow.keras.applications.vgg16 import VGG16
@@ -17,25 +17,29 @@ from utils import bbox_utils, rpn_utils
 hyper_params = {"img_size": 500,
                 "feature_map_shape": 31,
                 "anchor_ratios": [1., 2., 1./2.],
-                "anchor_scales": [128, 256, 512],
-                "pre_nms_topn": 6000,
-                "train_nms_topn": 1500,
-                "test_nms_topn": 300,
-                "nms_iou_threshold": 0.9,
+                "anchor_scales": [64, 128, 256, 512],
+                "pre_nms_topn": 1000,
+                "train_nms_topn": 256,
+                "test_nms_topn": 16,
+                "nms_iou_threshold": 0.8,
                 "total_pos_bboxes": 128,
-                "total_neg_bboxes": 64,
+                "total_neg_bboxes": 128,
                 "pooling_size": (7,7),
                 "variances": [0.1, 0.1, 0.2, 0.2],
                 "iters" : 20000,
                 "pos_threshold" : 0.6,
                 "neg_threshold" : 0.25,
                 "batch_size" : 16,
+                "background" : False,
+                "dtn_with_binary" : True
                 }
 hyper_params['anchor_count'] = len(hyper_params['anchor_ratios']) * len(hyper_params['anchor_scales'])
 #
 iters = hyper_params['iters']
 batch_size = hyper_params['batch_size']
 img_size = hyper_params["img_size"]
+background = hyper_params["background"]
+dtn_with_binary = hyper_params["dtn_with_binary"]
 #%%
 info_dir = r"C:\won\data\pascal_voc\voc2007_np"
 info = np.load(info_dir + r"\info.npy", allow_pickle=True)
@@ -47,7 +51,10 @@ test_filename = info[0]['test_filename']
 train_total_items = len(train_filename)
 test_total_items = len(test_filename)
 
-hyper_params["total_labels"] = len(labels) + 1 # background label
+if background == True:
+    labels = ["bg"] + labels
+
+hyper_params["total_labels"] = len(labels)
 #%%
 anchors = bbox_utils.generate_anchors(hyper_params)
 #%%
@@ -76,6 +83,7 @@ class RoIBBox(Layer):
         nms_iou_threshold = self.hyper_params["nms_iou_threshold"] # nms_iou_threshold : 0.7
         # nms_iou_threshold = tf.constant(nms_iou_threshold, dtype=tf.float32)
         variances = self.hyper_params["variances"]
+        # non_nms = self.hyper_params["non_nms"]
         total_anchors = anchors.shape[0]
         batch_size = tf.shape(rpn_bbox_deltas)[0]
         rpn_bbox_deltas = tf.reshape(rpn_bbox_deltas, (batch_size, total_anchors, 4))
@@ -108,10 +116,12 @@ class RoIBBox(Layer):
         pre_roi_bboxes = tf.reshape(pre_roi_bboxes, (batch_size, pre_nms_topn, 1, 4))
         pre_roi_probs = tf.reshape(pre_roi_probs, (batch_size, pre_nms_topn, 1))
         #
+        # roi_bboxs
+        
         roi_bboxes, roi_scores, _, _ = tf.image.combined_non_max_suppression(pre_roi_bboxes, pre_roi_probs,
-                                                             max_output_size_per_class=post_nms_topn,
-                                                             max_total_size = post_nms_topn,
-                                                             iou_threshold=nms_iou_threshold)
+                                                            max_output_size_per_class=post_nms_topn,
+                                                            max_total_size = post_nms_topn,
+                                                            iou_threshold=nms_iou_threshold)
         #
         return roi_bboxes, roi_scores # rpn과 classification 을 따로 학습 시키기 위해
 #    
@@ -171,6 +181,7 @@ class RoIDelta(Layer):
         gt_boxes = inputs[1]
         gt_labels = inputs[2]
 
+        background = self.hyper_params["background"]
         total_labels = self.hyper_params["total_labels"]
         total_pos_bboxes = self.hyper_params["total_pos_bboxes"]
         total_neg_bboxes = self.hyper_params["total_neg_bboxes"]
@@ -213,7 +224,10 @@ class RoIDelta(Layer):
         # 1500개의 roi_bbox 와의 iou가 가장 큰 gtbox 의 class label 
         pos_gt_labels = tf.where(pos_mask, gt_labels_map, tf.constant(-1, dtype=tf.int32))
         neg_gt_labels = tf.cast(neg_mask, dtype=tf.int32)
+
         expanded_gt_labels = pos_gt_labels + neg_gt_labels # IoU 가 ~0.1 은 -1, 0.1~0.5 인 것 중 128개는 0, 0.5~ 중 128개는 1 이상의 클래스 나머지는 -1
+        if background == False:
+            expanded_gt_labels = pos_gt_labels
         #
         bbox_width = roi_bboxes[..., 3] - roi_bboxes[..., 1]
         bbox_height = roi_bboxes[..., 2] - roi_bboxes[..., 0]
@@ -234,7 +248,7 @@ class RoIDelta(Layer):
         
         roi_bbox_deltas = tf.stack([delta_y, delta_x, delta_h, delta_w], axis=-1) / variances
         #
-        roi_bbox_labels = tf.one_hot(expanded_gt_labels, total_labels) # 21개 클래스로 인코딩
+        roi_bbox_labels = tf.one_hot(expanded_gt_labels, total_labels)
         scatter_indices = tf.tile(tf.expand_dims(roi_bbox_labels, -1), (1, 1, 1, 4))
         roi_bbox_deltas = scatter_indices * tf.expand_dims(roi_bbox_deltas, -2)
 
@@ -265,13 +279,9 @@ class Decoder(Layer):
         batch_size = tf.shape(pred_deltas)[0]
 
         pred_deltas = tf.reshape(pred_deltas, (batch_size, -1, self.total_labels, 4))
-        # total_labels = hyper_params["total_labels"]#
-        # pred_deltas = tf.reshape(pred_deltas, (batch_size, -1, total_labels, 4))#
         pred_deltas *= self.variances
-        # pred_deltas *= hyper_params["variances"]#
 
         expanded_roi_bboxes = tf.tile(tf.expand_dims(roi_bboxes, -2), (1, 1, self.total_labels, 1))
-        # expanded_roi_bboxes = tf.tile(tf.expand_dims(roi_bboxes, -2), (1, 1, total_labels, 1))#
         
         all_anc_width = expanded_roi_bboxes[..., 3] - expanded_roi_bboxes[..., 1]
         all_anc_height = expanded_roi_bboxes[..., 2] - expanded_roi_bboxes[..., 0]
@@ -313,18 +323,15 @@ def region_reg_loss(pred, bbox_deltas, bbox_labels):
     tune_param = total_anchors_loc / (hyper_params["total_pos_bboxes"] + hyper_params["total_neg_bboxes"])
 
     loss_fn = tf.losses.Huber(reduction=tf.losses.Reduction.NONE)
-    # Huber : SmoothL1 loss function
+
     loss_for_all = loss_fn(bbox_deltas, pred)
     
     pos_cond = tf.equal(bbox_labels, tf.constant(1.0))
-    # tf.reduce_any?
     
     pos_mask = tf.cast(pos_cond, dtype=tf.float32)
-    # positive label
-    #
+
     loc_loss = tf.reduce_sum(pos_mask * loss_for_all)
 
-    # total_pos_bboxes = tf.reduce_sum(pos_mask)
 
     return loc_loss * tune_param / total_anchors_loc
 #%%
@@ -376,6 +383,17 @@ def dtn_cls_loss(pred, true):
     total_boxes = tf.maximum(1.0, tf.reduce_sum(mask))
     
     return conf_loss / total_boxes
+
+#%%
+def dtn_cls_binary(pred, true):
+
+    target = true
+    output = pred
+
+    lf = tf.losses.BinaryCrossentropy()
+
+    return lf(target, output)
+    
 #%% RPN Model
 class RPN(Model):
     
@@ -432,6 +450,10 @@ class Recog(Model):
         self.reg = TimeDistributed(Dense(self.hyper_params['total_labels'] * 4, 
                                          activation='linear'), 
                                          name='frcnn_reg')
+        if hyper_params["dtn_with_binary"] == True:
+            self.cls = TimeDistributed(Dense(self.hyper_params['total_labels'],
+                                             activation='sigmoid'),
+                                       name='frcnn_cls')
 
     def call(self, inputs):
         roi_pooled = self.roi_pooled(inputs)
@@ -480,30 +502,21 @@ def train_step1(img, bbox_deltas, bbox_labels):
 
 #%%
 @tf.function
-def train_step2(nms_output, roi_delta):
+def train_step2(roi_bbox, roi_delta, dtn_with_binary):
     with tf.GradientTape(persistent=True) as tape:
         '''Recognition'''
-        frcnn_pred = frcnn_model([feature_map, tf.stop_gradient(nms_output)], training=True)
+        frcnn_pred = frcnn_model([feature_map, tf.stop_gradient(roi_bbox)], training=True)
         
         frcnn_reg_loss = dtn_reg_loss(frcnn_pred[0], roi_delta[0], roi_delta[1])
         frcnn_cls_loss = dtn_cls_loss(frcnn_pred[1], roi_delta[1])
+        if dtn_with_binary == True:
+            frcnn_cls_loss = dtn_cls_binary(frcnn_pred[1], roi_delta[1])
         frcnn_loss = frcnn_reg_loss + frcnn_cls_loss
 
     grads_frcnn = tape.gradient(frcnn_loss, frcnn_model.trainable_weights)
     optimizer2.apply_gradients(zip(grads_frcnn, frcnn_model.trainable_weights))
 
     return frcnn_reg_loss, frcnn_cls_loss
-
-#%%
-def printProgress (iteration, total, prefix = '', suffix = '', decimals = 1, barLength = 100, loss_message=None): 
-    formatStr = "{0:." + str(decimals) + "f}" 
-    percent = formatStr.format(100 * (iteration / float(total))) 
-    filledLength = int(round(barLength * iteration / float(total))) 
-    bar = '#' * filledLength + '-' * (barLength - filledLength) 
-    sys.stdout.write('\r%s |%s| %s%s %s' % (prefix, bar, percent, '%', suffix)), 
-    if iteration == total:
-        sys.stdout.write('\n') 
-        sys.stdout.flush()
 
 #%%
 def save_dict_to_file(dic,dict_dir):
@@ -515,17 +528,33 @@ def save_dict_to_file(dic,dict_dir):
 train_dir = r"C:\won\data\pascal_voc\voc2007_np\train_val\\"
 start_time = time.time()
 pos_num_lst = []
-for iter in range(iters):
+
+step = 0
+progress_bar = tqdm(range(hyper_params['iters']))
+progress_bar.set_description('iteration {}/{} | current loss ?'.format(step, hyper_params['iters']))
+
+for _ in progress_bar:
     batch_data = np.array([np.load(train_dir + train_filename[i] + ".npy", allow_pickle=True) for i in list(np.random.randint(0, train_total_items, batch_size))])
     img, gt_boxes, gt_labels, bbox_deltas, bbox_labels, chk_pos_num = rpn_utils.faster_rcnn_generator(batch_data, anchors, hyper_params)
     pos_num_lst.append(chk_pos_num)
     
     rpn_reg_loss, rpn_cls_loss, rpn_reg_output, rpn_cls_output, feature_map = train_step1(img, bbox_deltas, bbox_labels)
-    nms_output, _ = NMS([rpn_reg_output, rpn_cls_output])
-    roi_delta = Delta([nms_output, gt_boxes, gt_labels])
-    frcnn_reg_loss, frcnn_cls_loss = train_step2(nms_output, roi_delta)
-        
-    printProgress(iter, iters-1, 'Progress:', 'Complete', 1, 100)
+    roi_bboxes, _ = NMS([rpn_reg_output, rpn_cls_output])
+    roi_delta = Delta([roi_bboxes, gt_boxes, gt_labels])
+    frcnn_reg_loss, frcnn_cls_loss = train_step2(roi_bboxes, roi_delta, dtn_with_binary)
+
+    step += 1
+    
+    progress_bar.set_description('iteration {}/{} | rpn_reg {:.4f}, rpn_cls {:.4f}, rpn {:.4f}, frcnn_reg {:.4f}, frcnn_cls {:.4f}, frcnn {:.4f}, loss {:.4f}'.format(
+        step, hyper_params['iters'], 
+        rpn_reg_loss.numpy(), rpn_cls_loss.numpy(), (rpn_reg_loss + rpn_cls_loss).numpy(), frcnn_reg_loss.numpy(), frcnn_cls_loss.numpy(), (frcnn_reg_loss + frcnn_cls_loss).numpy(), (rpn_reg_loss + rpn_cls_loss + frcnn_reg_loss + frcnn_cls_loss).numpy()
+    )) 
+    
+    if step % 500 == 0:
+        print(progress_bar.set_description('iteration {}/{} | rpn_reg {:.4f}, rpn_cls {:.4f}, rpn {:.4f}, frcnn_reg {:.4f}, frcnn_cls {:.4f}, frcnn {:.4f}, loss {:.4f}'.format(
+            step, hyper_params['iters'], 
+            float(rpn_reg_loss), float(rpn_cls_loss), float(rpn_reg_loss + rpn_cls_loss), float(frcnn_reg_loss), float(frcnn_cls_loss), float(frcnn_reg_loss + frcnn_cls_loss), float(rpn_reg_loss + rpn_cls_loss + frcnn_reg_loss + frcnn_cls_loss)
+        )))
 
 print(
     "\nTraining loss: rpn_reg - %.4f, rpn_cls - %.4f, rpn - %.4f, frcnn_reg - %.4f, frcnn_cls - %.4f, frcnn - %.4f, loss - %.4f"
@@ -560,8 +589,10 @@ rpn_model.save_weights(res_dir + r'\rpn_weights\weights')
 frcnn_model.save_weights(res_dir + r'\frcnn_weights\weights')
 print("Weights Saved")
 
-# rpn_model.load_weights(res_dir + '3' + r'\rpn_weights\weights')
-# frcnn_model.load_weights(res_dir + '3' + r'\frcnn_weights\weights')
+# rpn_model.load_weights(res_dir + r'\rpn_weights\weights')
+# frcnn_model.load_weights(res_dir + r'\frcnn_weights\weights')
+rpn_model.load_weights(res_dir + '10' + r'\rpn_weights\weights')
+frcnn_model.load_weights(res_dir + '10' + r'\frcnn_weights\weights')
 
 
 #%%
@@ -575,15 +606,14 @@ decode = Decoder(hyper_params)
 test_dir = r"C:\won\data\pascal_voc\voc2007_np\test\\"
 
 attempts = 15
-
 attempt=1
 for attempt in range(attempts):
     res_filename = [test_filename[i] for i in range(attempt*batch_size, attempt*batch_size + batch_size)]
     batch_data = np.array([np.load(test_dir + test_filename[i] + ".npy", allow_pickle=True) for i in range(attempt*batch_size, attempt*batch_size+batch_size)])
     img, gt_boxes, gt_labels, bbox_deltas, bbox_labels, chk_pos_num = rpn_utils.faster_rcnn_generator(batch_data, anchors, hyper_params, train=False)
     
-    rpn_reg_pred, rpn_cls_pred, feature_map = rpn_model.predict(img)
-    roi_bboxes, roi_scores = NMS([rpn_reg_pred, rpn_cls_pred])
+    rpn_reg_output, rpn_cls_output, feature_map = rpn_model.predict(img)
+    roi_bboxes, roi_scores = NMS([rpn_reg_output, rpn_cls_output])
     pred_deltas, pred_label_probs = frcnn_model.predict([feature_map, roi_bboxes])
     final_bboxes, final_labels, final_scores = decode([roi_bboxes, pred_deltas, pred_label_probs])
 
@@ -624,11 +654,11 @@ for attempt in range(attempts):
 ##### FINAL BOUNDING BOXES #####
     for i , image in enumerate(img):
 
-        tmp = tf.reshape(pred_deltas[i], shape=(1, pred_deltas.shape[1], 21, 4))
+        tmp = tf.reshape(pred_deltas[i], shape=(1, pred_deltas.shape[1], hyper_params['total_labels'], 4))
         tmp *= hyper_params['variances']
         # pred_deltas *= hyper_params["variances"]#
 
-        expanded_roi_bboxes = tf.reshape(tf.tile(tf.expand_dims(roi_bboxes[i], -2), (1, hyper_params['total_labels'], 1)), shape=(1,hyper_params['test_nms_topn'], 21, 4))
+        expanded_roi_bboxes = tf.reshape(tf.tile(tf.expand_dims(roi_bboxes[i], -2), (1, hyper_params['total_labels'], 1)), shape=(1,hyper_params['test_nms_topn'], hyper_params['total_labels'], 4))
         # expanded_roi_bboxes = tf.tile(tf.expand_dims(roi_bboxes, -2), (1, 1, total_labels, 1))#
         
         all_anc_width = expanded_roi_bboxes[..., 3] - expanded_roi_bboxes[..., 1]

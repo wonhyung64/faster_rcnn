@@ -1,7 +1,6 @@
 #%%
 import tensorflow as tf
 def generate_anchors(hyper_params): 
-    anchor_count = hyper_params['anchor_count']
     feature_map_shape = hyper_params['feature_map_shape']
 
     stride = 1 / feature_map_shape
