@@ -230,7 +230,7 @@ class RoIDelta(Layer):
 
 #%%
 class Decoder(Layer):
-    def __init__(self, hyper_params, max_total_size=200, score_threshold=0.8, **kwargs):
+    def __init__(self, hyper_params, max_total_size=200, score_threshold=0.9, **kwargs):
         super(Decoder, self).__init__(**kwargs)
         self.variances = hyper_params["variances"]
         self.total_labels = hyper_params["total_labels"]
@@ -345,7 +345,7 @@ class Recog(Model):
 rpn_model = RPN(hyper_params)
 input_shape = (None, 500, 500, 3)
 rpn_model.build(input_shape)
-rpn_model.load_weights(r'C:\won\frcnn\atmp2\rpn_weights\weights')
+rpn_model.load_weights(r'C:\won\frcnn\atmp1\rpn_weights\weights')
 
 
 NMS = RoIBBox(anchors, hyper_params, test=False, name='roi_bboxes')
@@ -356,7 +356,7 @@ Delta = RoIDelta(hyper_params, name='roi_deltas')
 frcnn_model = Recog(hyper_params)
 input_shape = (None, hyper_params['train_nms_topn'], 7, 7, 512)
 frcnn_model.build(input_shape)
-frcnn_model.load_weights(r'C:\won\frcnn\atmp2\frcnn_weights\weights')
+frcnn_model.load_weights(r'C:\won\frcnn\atmp1\frcnn_weights\weights')
 #%%
 optimizer1 = keras.optimizers.Adam(learning_rate=1e-5)
 optimizer2 = keras.optimizers.Adam(learning_rate=1e-5)

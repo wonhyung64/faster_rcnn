@@ -38,8 +38,6 @@ iters = hyper_params['iters']
 batch_size = hyper_params['batch_size']
 img_size = hyper_params["img_size"]
 background = hyper_params["background"]
-dtn_with_binary = hyper_params["dtn_with_binary"]
-nms_by_class = hyper_params["nms_by_class"]
 #%%
 info_dir = r"C:\won\data\pascal_voc\voc2007_np"
 info = np.load(info_dir + r"\info.npy", allow_pickle=True)
@@ -292,10 +290,6 @@ class DTN(Model):
         self.reg = TimeDistributed(Dense(self.hyper_params['total_labels'] * 4, 
                                          activation='linear'), 
                                          name='frcnn_reg')
-        if hyper_params["dtn_with_binary"] == True:
-            self.cls = TimeDistributed(Dense(self.hyper_params['total_labels'],
-                                             activation='sigmoid'),
-                                       name='frcnn_cls')
 
     def call(self, inputs):
         fc1 = self.FC1(inputs)
@@ -345,15 +339,13 @@ def train_step1(img, bbox_deltas, bbox_labels, hyper_params):
 
 #%%
 @tf.function
-def train_step2(pooled_roi, roi_delta, dtn_with_binary):
+def train_step2(pooled_roi, roi_delta):
     with tf.GradientTape(persistent=True) as tape:
         '''DTNnition'''
         frcnn_pred = frcnn_model(pooled_roi, training=True)
         
         frcnn_reg_loss = loss_utils.dtn_reg_loss(frcnn_pred[0], roi_delta[0], roi_delta[1], hyper_params)
         frcnn_cls_loss = loss_utils.dtn_cls_loss(frcnn_pred[1], roi_delta[1])
-        if dtn_with_binary == True:
-            frcnn_cls_loss = loss_utils.dtn_cls_binary(frcnn_pred[1], roi_delta[1])
         frcnn_loss = frcnn_reg_loss + frcnn_cls_loss
 
     grads_frcnn = tape.gradient(frcnn_loss, frcnn_model.trainable_weights)
@@ -390,7 +382,7 @@ for _ in progress_bar:
     roi_bboxes, _ = NMS([rpn_reg_output, rpn_cls_output, gt_labels])
     pooled_roi = Pooling([feature_map, roi_bboxes])
     roi_delta = Delta([roi_bboxes, gt_boxes, gt_labels])
-    frcnn_reg_loss, frcnn_cls_loss = train_step2(pooled_roi, roi_delta, dtn_with_binary)
+    frcnn_reg_loss, frcnn_cls_loss = train_step2(pooled_roi, roi_delta)
 
     step += 1
     
