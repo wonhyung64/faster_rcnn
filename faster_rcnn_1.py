@@ -21,7 +21,7 @@ hyper_params = {"img_size": 500,
                 "pre_nms_topn": 1000,
                 "train_nms_topn": 256,
                 "test_nms_topn": 16,
-                "nms_iou_threshold": 0.8,
+                "nms_iou_threshold": 0.7,
                 "total_pos_bboxes": 128,
                 "total_neg_bboxes": 128,
                 "pooling_size": (7,7),
@@ -31,7 +31,7 @@ hyper_params = {"img_size": 500,
                 "neg_threshold" : 0.25,
                 "batch_size" : 16,
                 "background" : False,
-                "dtn_with_binary" : True,
+                "dtn_with_binary" : False,
                 "nms_by_class" : False
                 }
 hyper_params['anchor_count'] = len(hyper_params['anchor_ratios']) * len(hyper_params['anchor_scales'])
@@ -240,7 +240,7 @@ class RoIDelta(Layer):
 
 #%%
 class Decoder(Layer):
-    def __init__(self, hyper_params, max_total_size=200, score_threshold=0.5, **kwargs):
+    def __init__(self, hyper_params, max_total_size=200, score_threshold=0.8, **kwargs):
         super(Decoder, self).__init__(**kwargs)
         self.variances = hyper_params["variances"]
         self.total_labels = hyper_params["total_labels"]
@@ -295,7 +295,7 @@ class RPN(Model):
         self.layer = self.base_model.get_layer('block5_conv3').output
 
         self.feature_extractor = Model(inputs=self.base_model.input, outputs=self.layer)
-        self.feature_extractor.trainable = False
+        # self.feature_extractor.trainable = False
 
         self.conv = Conv2D(filters=512, kernel_size=(3, 3), 
                            activation='relu', padding='same', 
@@ -323,7 +323,6 @@ class Recog(Model):
     def __init__(self, hyper_params):
         super(Recog, self).__init__()
         self.hyper_params = hyper_params
-        self.roi_pooled = RoIPooling(self.hyper_params, name='roi_pooling')
         #
         self.FC1 = TimeDistributed(Flatten(), name='frcnn_flatten')
         self.FC2 = TimeDistributed(Dense(4096, activation='relu'), name='frcnn_fc1')
@@ -343,8 +342,7 @@ class Recog(Model):
                                        name='frcnn_cls')
 
     def call(self, inputs):
-        roi_pooled = self.roi_pooled(inputs)
-        fc1 = self.FC1(roi_pooled)
+        fc1 = self.FC1(inputs)
         fc2 = self.FC2(fc1)
         fc3 = self.FC3(fc2)
         fc4 = self.FC4(fc3)
@@ -357,16 +355,18 @@ class Recog(Model):
 rpn_model = RPN(hyper_params)
 input_shape = (None, 500, 500, 3)
 rpn_model.build(input_shape)
+rpn_model.load_weights(r'C:\won\frcnn\atmp2\rpn_weights\weights')
+
 
 NMS = RoIBBox(anchors, hyper_params, test=False, name='roi_bboxes')
+Pooling = RoIPooling(hyper_params, name="roi_pooling")
 Delta = RoIDelta(hyper_params, name='roi_deltas')
 
-frcnn_model = Recog(hyper_params)
-input_shape = [(None, hyper_params['feature_map_shape'], 
-                hyper_params['feature_map_shape'], 512), 
-               (None, hyper_params['train_nms_topn'], 4)]
-frcnn_model.build(input_shape)
 
+frcnn_model = Recog(hyper_params)
+input_shape = (None, hyper_params['train_nms_topn'], 7, 7, 512)
+frcnn_model.build(input_shape)
+frcnn_model.load_weights(r'C:\won\frcnn\atmp2\frcnn_weights\weights')
 #%%
 optimizer1 = keras.optimizers.Adam(learning_rate=1e-5)
 optimizer2 = keras.optimizers.Adam(learning_rate=1e-5)
@@ -389,10 +389,10 @@ def train_step1(img, bbox_deltas, bbox_labels, hyper_params):
 
 #%%
 @tf.function
-def train_step2(roi_bbox, roi_delta, dtn_with_binary):
+def train_step2(pooled_roi, roi_delta, dtn_with_binary):
     with tf.GradientTape(persistent=True) as tape:
         '''Recognition'''
-        frcnn_pred = frcnn_model([feature_map, tf.stop_gradient(roi_bbox)], training=True)
+        frcnn_pred = frcnn_model(pooled_roi, training=True)
         
         frcnn_reg_loss = loss_utils.dtn_reg_loss(frcnn_pred[0], roi_delta[0], roi_delta[1], hyper_params)
         frcnn_cls_loss = loss_utils.dtn_cls_loss(frcnn_pred[1], roi_delta[1])
@@ -432,8 +432,9 @@ for _ in progress_bar:
     
     rpn_reg_loss, rpn_cls_loss, rpn_reg_output, rpn_cls_output, feature_map = train_step1(img, bbox_deltas, bbox_labels, hyper_params)
     roi_bboxes, _ = NMS([rpn_reg_output, rpn_cls_output, gt_labels])
+    pooled_roi = Pooling([feature_map, roi_bboxes])
     roi_delta = Delta([roi_bboxes, gt_boxes, gt_labels])
-    frcnn_reg_loss, frcnn_cls_loss = train_step2(roi_bboxes, roi_delta, dtn_with_binary)
+    frcnn_reg_loss, frcnn_cls_loss = train_step2(pooled_roi, roi_delta, dtn_with_binary)
 
     step += 1
     
@@ -475,9 +476,8 @@ os.makedirs(res_dir + r'\res_frcnn')
 rpn_model.save_weights(res_dir + r'\rpn_weights\weights')
 frcnn_model.save_weights(res_dir + r'\frcnn_weights\weights')
 print("Weights Saved")
-
-rpn_model.load_weights(res_dir + r'\rpn_weights\weights')
-frcnn_model.load_weights(res_dir + r'\frcnn_weights\weights')
+# rpn_model.load_weights(res_dir + r'\rpn_weights\weights')
+# frcnn_model.load_weights(res_dir + r'\frcnn_weights\weights')
 # rpn_model.load_weights(res_dir + '11' + r'\rpn_weights\weights')
 # frcnn_model.load_weights(res_dir + '11' + r'\frcnn_weights\weights')
 
@@ -488,6 +488,7 @@ batch_size = 2
 hyper_params['batch_size'] = batch_size
 
 NMS = RoIBBox(anchors, hyper_params, test=True, name='roi_bboxes')
+Pooling = RoIPooling(hyper_params, name="roi_pooling")
 decode = Decoder(hyper_params)
 
 test_dir = r"C:\won\data\pascal_voc\voc2007_np\test\\"
@@ -503,7 +504,8 @@ for attempt in range(attempts):
     
     rpn_reg_output, rpn_cls_output, feature_map = rpn_model.predict(img)
     roi_bboxes, roi_scores = NMS([rpn_reg_output, rpn_cls_output, gt_labels])
-    pred_deltas, pred_label_probs = frcnn_model.predict([feature_map, roi_bboxes])
+    pooled_roi = Pooling([feature_map, roi_bboxes])
+    pred_deltas, pred_label_probs = frcnn_model.predict(pooled_roi)
     final_bboxes, final_labels, final_scores = decode([roi_bboxes, pred_deltas, pred_label_probs])
 
     img_size = img.shape[1]
