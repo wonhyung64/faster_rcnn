@@ -72,14 +72,6 @@ class RoIBBox(Layer):
         config.update({"hyper_params": self.hyper_params, "anchors": self.anchors.numpy()})
         return config
 
-# rpn_bbox_deltas = rpn_reg_output
-# rpn_reg_output.shape
-# rpn_probs = rpn_cls_output
-# pre_nms_topn = hyper_params["pre_nms_topn"]
-# pst_nms_topn = hyper_params["train_nms_topn"]
-# nms_iou_threshold = hyper_params["nms_iou_threshold"]
-# variances = hyper_params["variances"]
-
 
     def call(self, inputs):
         rpn_bbox_deltas = inputs[0]
@@ -164,7 +156,6 @@ class RoIPooling(Layer):
         pooling_bbox_indices = tf.tile(tf.expand_dims(tf.range(batch_size), axis=1), (1, total_bboxes))
         pooling_bbox_indices = tf.reshape(pooling_bbox_indices, (-1, ))
         pooling_bboxes = tf.reshape(roi_bboxes, (row_size, 4))
-        # (roi_1500 * batch_size_4, bbox_coordinate_4)
         #
 
         pooling_feature_map = tf.image.crop_and_resize(
@@ -172,7 +163,7 @@ class RoIPooling(Layer):
             pooling_bboxes,
             pooling_bbox_indices,
             pooling_size
-        ) # (roi_1500 * batch_size_4, pooling_size, pooling_size, feature_map_channel_512)
+        ) 
         final_pooling_feature_map = tf.reshape(pooling_feature_map, (batch_size,
                                                                      total_bboxes,
                                                                      pooling_feature_map.shape[1],
@@ -202,7 +193,6 @@ class RoIDelta(Layer):
         total_pos_bboxes = self.hyper_params["total_pos_bboxes"]
         total_neg_bboxes = self.hyper_params["total_neg_bboxes"]
         variances = self.hyper_params["variances"]
-        # batch_size, total_bboxes = tf.shape(roi_bboxes)[0], tf.shape(roi_bboxes)[1]
         #
         iou_map = rpn_utils.generate_iou(roi_bboxes, gt_boxes)
         #

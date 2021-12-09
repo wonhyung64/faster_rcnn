@@ -75,13 +75,3 @@ def dtn_cls_loss(pred, true):
     total_boxes = tf.maximum(1.0, tf.reduce_sum(mask))
 
     return conf_loss / total_boxes
-
-#%%
-def dtn_cls_binary(pred, true):
-
-    target = true
-    output = pred
-
-    lf = tf.losses.BinaryCrossentropy()
-
-    return lf(target, output)

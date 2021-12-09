@@ -275,9 +275,9 @@ class RPN(Model):
         return [reg, cls, feature_map]
 
 #%% Faster R-CNN Model
-class Recog(Model):
+class DTN(Model):
     def __init__(self, hyper_params):
-        super(Recog, self).__init__()
+        super(DTN, self).__init__()
         self.hyper_params = hyper_params
         #
         self.FC1 = TimeDistributed(Flatten(), name='frcnn_flatten')
@@ -319,7 +319,7 @@ Pooling = RoIPooling(hyper_params, name="roi_pooling")
 Delta = RoIDelta(hyper_params, name='roi_deltas')
 
 
-frcnn_model = Recog(hyper_params)
+frcnn_model = DTN(hyper_params)
 input_shape = (None, hyper_params['train_nms_topn'], 7, 7, 512)
 frcnn_model.build(input_shape)
 # frcnn_model.load_weights(r'C:\won\frcnn\atmp1\frcnn_weights\weights')
@@ -347,7 +347,7 @@ def train_step1(img, bbox_deltas, bbox_labels, hyper_params):
 @tf.function
 def train_step2(pooled_roi, roi_delta, dtn_with_binary):
     with tf.GradientTape(persistent=True) as tape:
-        '''Recognition'''
+        '''DTNnition'''
         frcnn_pred = frcnn_model(pooled_roi, training=True)
         
         frcnn_reg_loss = loss_utils.dtn_reg_loss(frcnn_pred[0], roi_delta[0], roi_delta[1], hyper_params)
