@@ -24,10 +24,10 @@ hyper_params = {"img_size": 500,
                 "total_neg_bboxes": 128,
                 "pooling_size": (7,7),
                 "variances": [0.1, 0.1, 0.2, 0.2],
-                "iters" : 20000,
                 "pos_threshold" : 0.7,
                 "neg_threshold" : 0.3,
                 "batch_size" : 16,
+                "iters" : 20000,
                 }
 hyper_params['anchor_count'] = len(hyper_params['anchor_ratios']) * len(hyper_params['anchor_scales'])
 #
@@ -363,8 +363,6 @@ Pooling = RoIPooling(hyper_params, name="roi_pooling")
 decode = Decoder(hyper_params)
 
 test_dir = r"C:\won\data\pascal_voc\voc2007_np\test\\"
-
-attempts = 15
 
 for attempt in range(attempts):
 
