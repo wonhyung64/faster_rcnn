@@ -8,11 +8,9 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from PIL import ImageDraw
 from tensorflow import keras
-from tensorflow.keras.applications.vgg16 import VGG16
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Layer, Conv2D, TimeDistributed, Dense, Flatten, Dropout
+from tensorflow.keras.layers import Layer
 #
-from utils import bbox_utils, rpn_utils, loss_utils
+from utils import bbox_utils, loss_utils, model_utils, rpn_utils, preprocessing_utils
 #%% HYPER PARAMETERS
 hyper_params = {"img_size": 500,
                 "feature_map_shape": 31,
@@ -30,14 +28,14 @@ hyper_params = {"img_size": 500,
                 "pos_threshold" : 0.7,
                 "neg_threshold" : 0.3,
                 "batch_size" : 16,
-                "background" : True,
                 }
 hyper_params['anchor_count'] = len(hyper_params['anchor_ratios']) * len(hyper_params['anchor_scales'])
 #
 iters = hyper_params['iters']
 batch_size = hyper_params['batch_size']
 img_size = hyper_params["img_size"]
-background = hyper_params["background"]
+
+
 #%%
 info_dir = r"C:\won\data\pascal_voc\voc2007_np"
 info = np.load(info_dir + r"\info.npy", allow_pickle=True)
@@ -85,7 +83,7 @@ class RoIBBox(Layer):
         #
         rpn_bbox_deltas *= variances
         #
-        rpn_bboxes = rpn_utils.delta_to_bbox(anchors, rpn_bbox_deltas)
+        rpn_bboxes = bbox_utils.delta_to_bbox(anchors, rpn_bbox_deltas)
 
         _, pre_indices = tf.nn.top_k(rpn_probs, pre_nms_topn)
         #
@@ -156,7 +154,6 @@ class RoIDelta(Layer):
         gt_boxes = inputs[1]
         gt_labels = inputs[2]
 
-        background = self.hyper_params["background"]
         total_labels = self.hyper_params["total_labels"]
         total_pos_bboxes = self.hyper_params["total_pos_bboxes"]
         total_neg_bboxes = self.hyper_params["total_neg_bboxes"]
@@ -181,8 +178,6 @@ class RoIDelta(Layer):
         neg_gt_labels = tf.cast(neg_mask, dtype=tf.int32)
 
         expanded_gt_labels = pos_gt_labels + neg_gt_labels 
-        if background == False:
-            expanded_gt_labels = pos_gt_labels
         #
         roi_bbox_deltas = rpn_utils.bbox_to_delta(roi_bboxes, expanded_gt_boxes) / variances
         #
@@ -194,7 +189,7 @@ class RoIDelta(Layer):
 
 #%%
 class Decoder(Layer):
-    def __init__(self, hyper_params, max_total_size=200, score_threshold=0.5, **kwargs):
+    def __init__(self, hyper_params, max_total_size=200, score_threshold=0.7, **kwargs):
         super(Decoder, self).__init__(**kwargs)
         self.variances = hyper_params["variances"]
         self.total_labels = hyper_params["total_labels"]
@@ -222,7 +217,7 @@ class Decoder(Layer):
 
         expanded_roi_bboxes = tf.tile(tf.expand_dims(roi_bboxes, -2), (1, 1, self.total_labels, 1))
         
-        pred_bboxes = rpn_utils.delta_to_bbox(expanded_roi_bboxes, pred_deltas)
+        pred_bboxes = bbox_utils.delta_to_bbox(expanded_roi_bboxes, pred_deltas)
 
         pred_labels_map = tf.expand_dims(tf.argmax(pred_label_probs, -1), -1)
         pred_labels = tf.where(tf.not_equal(pred_labels_map, 0), pred_label_probs, tf.zeros_like(pred_label_probs))
@@ -234,91 +229,23 @@ class Decoder(Layer):
                             score_threshold=self.score_threshold
                         )
         return final_bboxes, final_labels, final_scores
-    
-#%% RPN Model
-class RPN(Model):
-    
-    def __init__(self, hyper_params):
-        super(RPN, self).__init__()
-        self.hyper_params = hyper_params
-
-        self.base_model = VGG16(include_top=False, input_shape=(self.hyper_params["img_size"], 
-                                                                self.hyper_params["img_size"],
-                                                                3))        
-
-        self.layer = self.base_model.get_layer('block5_conv3').output
-
-        self.feature_extractor = Model(inputs=self.base_model.input, outputs=self.layer)
-        self.feature_extractor.trainable = False
-
-        self.conv = Conv2D(filters=512, kernel_size=(3, 3), 
-                           activation='relu', padding='same', 
-                           name='rpn_conv')
-
-        self.rpn_cls_output = Conv2D(filters=self.hyper_params['anchor_count'], 
-                                     kernel_size=(1, 1), 
-                                     activation='sigmoid', 
-                                     name='rpn_cls')
-
-        self.rpn_reg_output = Conv2D(filters=self.hyper_params['anchor_count']*4, 
-                                     kernel_size=(1,1), 
-                                     activation='linear', 
-                                     name='rpn_reg')
-
-    def call(self,inputs):
-        feature_map = self.feature_extractor(inputs) 
-        x = self.conv(feature_map)
-        cls = self.rpn_cls_output(x)
-        reg = self.rpn_reg_output(x)
-        return [reg, cls, feature_map]
-
-#%% Faster R-CNN Model
-class DTN(Model):
-    def __init__(self, hyper_params):
-        super(DTN, self).__init__()
-        self.hyper_params = hyper_params
-        #
-        self.FC1 = TimeDistributed(Flatten(), name='frcnn_flatten')
-        self.FC2 = TimeDistributed(Dense(4096, activation='relu'), name='frcnn_fc1')
-        self.FC3 = TimeDistributed(Dropout(0.5), name='frcnn_dropout1')
-        self.FC4 = TimeDistributed(Dense(4096, activation='relu'), name='frcnn_fc2')
-        self.FC5 = TimeDistributed(Dropout(0.5), name='frcnn_dropout2')
-        #
-        self.cls = TimeDistributed(Dense(self.hyper_params['total_labels'], 
-                                         activation='softmax'), 
-                                         name='frcnn_cls')
-        self.reg = TimeDistributed(Dense(self.hyper_params['total_labels'] * 4, 
-                                         activation='linear'), 
-                                         name='frcnn_reg')
-
-    def call(self, inputs):
-        fc1 = self.FC1(inputs)
-        fc2 = self.FC2(fc1)
-        fc3 = self.FC3(fc2)
-        fc4 = self.FC4(fc3)
-        fc5 = self.FC5(fc4)
-        cls = self.cls(fc5)
-        reg = self.reg(fc5)
-        return [reg, cls]
 
 #%%
-rpn_model = RPN(hyper_params)
+rpn_model = model_utils.RPN(hyper_params)
 input_shape = (None, 500, 500, 3)
 rpn_model.build(input_shape)
-# rpn_model.load_weights(r'C:\won\frcnn\atmp1\rpn_weights\weights')
-
+# rpn_model.load_weights(r'C:\won\frcnn\atmp5\rpn_weights\weights')
 
 NMS = RoIBBox(anchors, hyper_params, test=False, name='roi_bboxes')
 Pooling = RoIPooling(hyper_params, name="roi_pooling")
 Delta = RoIDelta(hyper_params, name='roi_deltas')
 
-
-frcnn_model = DTN(hyper_params)
+frcnn_model = model_utils.DTN(hyper_params)
 input_shape = (None, hyper_params['train_nms_topn'], 7, 7, 512)
 frcnn_model.build(input_shape)
-# frcnn_model.load_weights(r'C:\won\frcnn\atmp1\frcnn_weights\weights')
+# frcnn_model.load_weights(r'C:\won\frcnn\atmp5\frcnn_weights\weights')
 #%%
-optimizer1 = keras.optimizers.Adam(learning_rate=1e-3)
+optimizer1 = keras.optimizers.Adam(learning_rate=1e-5)
 optimizer2 = keras.optimizers.Adam(learning_rate=1e-5)
 #%%
 @tf.function
@@ -373,7 +300,7 @@ for _ in progress_bar:
     chk_pos_num = []
 
     batch_data = np.array([np.load(train_dir + train_filename[i] + ".npy", allow_pickle=True) for i in list(np.random.randint(0, train_total_items, batch_size))])
-    img, gt_boxes, gt_labels = rpn_utils.preprocessing(batch_data, hyper_params["batch_size"], hyper_params["img_size"], hyper_params["img_size"], evaluate=False) 
+    img, gt_boxes, gt_labels = preprocessing_utils.preprocessing(batch_data, hyper_params["batch_size"], hyper_params["img_size"], hyper_params["img_size"], evaluate=False, augmentation=True) 
     bbox_deltas, bbox_labels, chk_pos_num = rpn_utils.calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params, chk_pos_num)
 
     pos_num_lst.append(chk_pos_num)
@@ -444,7 +371,7 @@ for attempt in range(attempts):
     res_filename = [test_filename[i] for i in range(attempt*batch_size, attempt*batch_size + batch_size)]
     batch_data = np.array([np.load(test_dir + test_filename[i] + ".npy", allow_pickle=True) for i in range(attempt*batch_size, attempt*batch_size+batch_size)])
 
-    img, gt_boxes, gt_labels = rpn_utils.preprocessing(batch_data, hyper_params["batch_size"], hyper_params["img_size"], hyper_params["img_size"], evaluate=True)
+    img, gt_boxes, gt_labels = preprocessing_utils.preprocessing(batch_data, hyper_params["batch_size"], hyper_params["img_size"], hyper_params["img_size"], evaluate=True)
     
     rpn_reg_output, rpn_cls_output, feature_map = rpn_model.predict(img)
     roi_bboxes, roi_scores = NMS([rpn_reg_output, rpn_cls_output, gt_labels])

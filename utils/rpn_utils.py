@@ -1,43 +1,6 @@
 #%%
 import numpy as np
 import tensorflow as tf
-
-#%%
-def preprocessing(data, batch_size, final_height, final_width, evaluate):
-    img_ = data[:,0]
-    gt_boxes_ = data[:,1]
-    gt_labels_ = data[:,2]
-    is_difficult_ = data[:,3]
-
-    for i in range(batch_size):
-        
-        if evaluate:
-            not_diff = np.logical_not(is_difficult_[i])
-            gt_boxes_[i] = gt_boxes_[i][not_diff]
-            gt_labels_[i] = gt_labels_[i][not_diff]
-
-        gt_boxes_[i] = tf.cast(gt_boxes_[i], tf.float32)
-        gt_labels_[i] = tf.cast(gt_labels_[i] + 1, tf.int32)
-
-        img_[i] = tf.image.convert_image_dtype(img_[i], tf.float32)
-        img_[i] = tf.image.resize(img_[i], (final_height, final_width))
-
-        img_[i] = tf.reshape(img_[i], shape=(1, final_height, final_width, 3))
-        gt_boxes_[i] = tf.reshape(gt_boxes_[i], shape=(1, gt_boxes_[i].shape[0], 4))
-        gt_labels_[i] = tf.reshape(gt_labels_[i], shape=(1, gt_labels_[i].shape[0]))
-
-    max_label_num = max([gt_labels_[i].shape[1] for i in range(batch_size)])
-
-    for i in range(batch_size):
-        gt_boxes_[i] = tf.concat([gt_boxes_[i], tf.constant(0, dtype=tf.float32, shape=(1, max_label_num - gt_boxes_[i].shape[1], 4))], axis = -2)
-        gt_labels_[i] = tf.concat([gt_labels_[i], tf.constant(0, dtype=tf.int32, shape=(1, max_label_num - gt_labels_[i].shape[1]))], axis=-1)
-    
-    img = tf.concat([img_[i] for i in range(batch_size)], axis=0)
-    gt_boxes = tf.concat([gt_boxes_[i] for i in range(batch_size)], axis=0)
-    gt_labels = tf.concat([gt_labels_[i] for i in range(batch_size)], axis=0)
-
-    return img, gt_boxes, gt_labels
-
 #%%
 def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params, chk_pos_num):
     batch_size = hyper_params['batch_size'] 
@@ -120,7 +83,6 @@ def generate_iou(anchors, gt_boxes):
     union_area = (tf.expand_dims(bbox_area, -1) + tf.expand_dims(gt_area, 1) - intersection_area)
     
     return intersection_area / union_area 
-
 #%%
 def bbox_to_delta(anchors, gt_boxes):
     bbox_width = anchors[..., 3] - anchors[..., 1]
@@ -141,22 +103,3 @@ def bbox_to_delta(anchors, gt_boxes):
     delta_h = tf.where(tf.equal(gt_height, 0), tf.zeros_like(gt_height), tf.math.log(gt_height / bbox_height))
     
     return tf.stack([delta_y, delta_x, delta_h, delta_w], axis=-1)
-
-#%%
-def delta_to_bbox(anchors, bbox_deltas):
-    all_anc_width = anchors[..., 3] - anchors[..., 1]
-    all_anc_height = anchors[..., 2] - anchors[..., 0]
-    all_anc_ctr_x = anchors[..., 1] + 0.5 * all_anc_width
-    all_anc_ctr_y = anchors[..., 0] + 0.5 * all_anc_height
-
-    all_bbox_width = tf.exp(bbox_deltas[..., 3]) * all_anc_width
-    all_bbox_height = tf.exp(bbox_deltas[..., 2]) * all_anc_height
-    all_bbox_ctr_x = (bbox_deltas[..., 1] * all_anc_width) + all_anc_ctr_x
-    all_bbox_ctr_y = (bbox_deltas[..., 0] * all_anc_height) + all_anc_ctr_y
-
-    y1 = all_bbox_ctr_y - (0.5 * all_bbox_height)
-    x1 = all_bbox_ctr_x - (0.5 * all_bbox_width)
-    y2 = all_bbox_height + y1
-    x2 = all_bbox_width + x1
-    
-    return tf.stack([y1, x1, y2, x2], axis=-1)
