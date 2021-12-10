@@ -25,6 +25,13 @@ def preprocessing(data, batch_size, final_height, final_width, evaluate, augment
         gt_boxes_[i] = tf.reshape(gt_boxes_[i], shape=(1, gt_boxes_[i].shape[0], 4))
         gt_labels_[i] = tf.reshape(gt_labels_[i], shape=(1, gt_labels_[i].shape[0]))
 
+        if np.logical_and(augmentation == True, np.random.uniform(0,1,1) > 0.5) == True:
+            img_[i] = tf.image.flip_left_right(img_[i])
+            gt_boxes_[i] = tf.stack([gt_boxes_[i][...,0],
+                                1.0 - gt_boxes_[i][...,3],
+                                gt_boxes_[i][...,2],
+                                1.0 - gt_boxes_[i][...,1]], -1)
+
     max_label_num = max([gt_labels_[i].shape[1] for i in range(batch_size)])
 
     for i in range(batch_size):
@@ -35,13 +42,6 @@ def preprocessing(data, batch_size, final_height, final_width, evaluate, augment
     gt_boxes = tf.concat([gt_boxes_[i] for i in range(batch_size)], axis=0)
     gt_labels = tf.concat([gt_labels_[i] for i in range(batch_size)], axis=0)
     
-    if np.logical_and(augmentation == True, np.random.uniform(0,1,1) > 0.5) == True:
-        img = tf.image.flip_left_right(img)
-        gt_boxes = tf.stack([gt_boxes[...,0],
-                             1.0 - gt_boxes[...,3],
-                             gt_boxes[...,],
-                             1.0 - gt_boxes[...,1]], -1)
-
     return img, gt_boxes, gt_labels
     
     
