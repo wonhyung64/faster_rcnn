@@ -417,7 +417,7 @@ for attempt in range(attempts):
         tmp *= hyper_params['variances']
 
         expanded_roi_bboxes = tf.reshape(tf.tile(tf.expand_dims(roi_bboxes[i], -2), (1, hyper_params['total_labels'], 1)), shape=(1,hyper_params['test_nms_topn'], hyper_params['total_labels'], 4))
-        final_bboxes_ = rpn_utils.delta_to_bbox(expanded_roi_bboxes, tmp)
+        final_bboxes_ = bbox_utils.delta_to_bbox(expanded_roi_bboxes, tmp)
 
         y1 = final_bboxes_[...,0] * img_size
         x1 = final_bboxes_[...,1] * img_size
