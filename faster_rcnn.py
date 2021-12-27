@@ -234,7 +234,7 @@ class Decoder(Layer):
 rpn_model = model_utils.RPN(hyper_params)
 input_shape = (None, 500, 500, 3)
 rpn_model.build(input_shape)
-# rpn_model.load_weights(r'C:\won\frcnn\atmp5\rpn_weights\weights')
+rpn_model.load_weights(r'C:\won\frcnn\atmp1\rpn_weights\weights')
 
 NMS = RoIBBox(anchors, hyper_params, test=False, name='roi_bboxes')
 Pooling = RoIPooling(hyper_params, name="roi_pooling")
@@ -243,7 +243,7 @@ Delta = RoIDelta(hyper_params, name='roi_deltas')
 frcnn_model = model_utils.DTN(hyper_params)
 input_shape = (None, hyper_params['train_nms_topn'], 7, 7, 512)
 frcnn_model.build(input_shape)
-# frcnn_model.load_weights(r'C:\won\frcnn\atmp5\frcnn_weights\weights')
+frcnn_model.load_weights(r'C:\won\frcnn\atmp1\frcnn_weights\weights')
 #%%
 optimizer1 = keras.optimizers.Adam(learning_rate=1e-5)
 optimizer2 = keras.optimizers.Adam(learning_rate=1e-5)
