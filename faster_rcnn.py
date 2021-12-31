@@ -27,7 +27,8 @@ hyper_params = {"img_size": 500,
                 "pos_threshold" : 0.7,
                 "neg_threshold" : 0.3,
                 "batch_size" : 16,
-                "iters" : 20000,
+                "iters" : 100,
+                "base_model" : "vgg19"
                 }
 hyper_params['anchor_count'] = len(hyper_params['anchor_ratios']) * len(hyper_params['anchor_scales'])
 #
@@ -65,6 +66,7 @@ class RoIBBox(Layer):
         config = super(RoIBBox, self).get_config()
         config.update({"hyper_params": self.hyper_params, "anchors": self.anchors.numpy()})
         return config
+    # @tf.function
     def call(self, inputs):
         rpn_bbox_deltas = inputs[0]
         rpn_probs = inputs[1]
@@ -113,6 +115,7 @@ class RoIPooling(Layer):
         config.update({"hyper_params": self.hyper_params})
         return config
     #
+    # @tf.function
     def call(self, inputs):
         feature_map = inputs[0]
         roi_bboxes = inputs[1]
@@ -149,6 +152,7 @@ class RoIDelta(Layer):
         config.update({"hyper_params": self.hyper_params})
         return config
     
+    # @tf.function
     def call(self, inputs):
         roi_bboxes = inputs[0]
         gt_boxes = inputs[1]
@@ -206,6 +210,7 @@ class Decoder(Layer):
         })
         return config
 
+    # @tf.function
     def call(self, inputs):
         roi_bboxes = inputs[0]
         pred_deltas = inputs[1]
@@ -234,7 +239,8 @@ class Decoder(Layer):
 rpn_model = model_utils.RPN(hyper_params)
 input_shape = (None, 500, 500, 3)
 rpn_model.build(input_shape)
-rpn_model.load_weights(r'C:\won\frcnn\atmp1\rpn_weights\weights')
+# rpn_model.summary()
+# rpn_model.load_weights(r'C:\won\frcnn\atmp1\rpn_weights\weights')
 
 NMS = RoIBBox(anchors, hyper_params, test=False, name='roi_bboxes')
 Pooling = RoIPooling(hyper_params, name="roi_pooling")
@@ -243,7 +249,8 @@ Delta = RoIDelta(hyper_params, name='roi_deltas')
 frcnn_model = model_utils.DTN(hyper_params)
 input_shape = (None, hyper_params['train_nms_topn'], 7, 7, 512)
 frcnn_model.build(input_shape)
-frcnn_model.load_weights(r'C:\won\frcnn\atmp1\frcnn_weights\weights')
+# frcnn_model.summary()
+# frcnn_model.load_weights(r'C:\won\frcnn\atmp1\frcnn_weights\weights')
 #%%
 optimizer1 = keras.optimizers.Adam(learning_rate=1e-5)
 optimizer2 = keras.optimizers.Adam(learning_rate=1e-5)

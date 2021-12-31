@@ -1,5 +1,5 @@
 #%%
-from tensorflow.keras.applications.vgg16 import VGG16
+import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Conv2D, TimeDistributed, Dense, Flatten, Dropout
 #%%
@@ -8,11 +8,16 @@ class RPN(Model):
     def __init__(self, hyper_params):
         super(RPN, self).__init__()
         self.hyper_params = hyper_params
-
-        self.base_model = VGG16(include_top=False, input_shape=(self.hyper_params["img_size"], 
-                                                                self.hyper_params["img_size"],
-                                                                3))        
-
+        if hyper_params["base_model"] == "vgg16":
+            from tensorflow.keras.applications.vgg16 import VGG16
+            self.base_model = VGG16(include_top=False, input_shape=(self.hyper_params["img_size"], 
+                                                                    self.hyper_params["img_size"],
+                                                                    3))        
+        elif hyper_params["base_model"] == "vgg19":
+            from tensorflow.keras.applications.vgg19 import VGG19
+            self.base_model = VGG19(include_top=False, input_shape=(self.hyper_params["img_size"], 
+                                                                    self.hyper_params["img_size"],
+                                                                    3))        
         self.layer = self.base_model.get_layer('block5_conv3').output
 
         self.feature_extractor = Model(inputs=self.base_model.input, outputs=self.layer)
@@ -31,7 +36,7 @@ class RPN(Model):
                                      kernel_size=(1,1), 
                                      activation='linear', 
                                      name='rpn_reg')
-
+    @tf.function
     def call(self,inputs):
         feature_map = self.feature_extractor(inputs) 
         x = self.conv(feature_map)
@@ -56,7 +61,7 @@ class DTN(Model):
         self.reg = TimeDistributed(Dense(self.hyper_params['total_labels'] * 4, 
                                          activation='linear'), 
                                          name='frcnn_reg')
-
+    @tf.function
     def call(self, inputs):
         fc1 = self.FC1(inputs)
         fc2 = self.FC2(fc1)
@@ -66,3 +71,4 @@ class DTN(Model):
         cls = self.cls(fc5)
         reg = self.reg(fc5)
         return [reg, cls]
+# %%

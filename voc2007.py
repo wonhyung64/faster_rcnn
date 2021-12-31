@@ -12,8 +12,6 @@ val_data, _ = tfds.load("voc/2007", split="validation", data_dir = data_dir, wit
 
 test_data, _ = tfds.load("voc/2007", split="test", data_dir = data_dir, with_info=True)
 #
-#
-#
 #%%
 info = dict()
 info['labels'] = dataset_info.features['labels'].names
