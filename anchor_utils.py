@@ -1,3 +1,4 @@
+
 #%%
 import tensorflow as tf
 #%%
@@ -28,21 +29,3 @@ def generate_anchors(hyper_params):
     anchors = tf.reshape(anchors, (-1, 4))
     anchors = tf.clip_by_value(t=anchors, clip_value_min=0, clip_value_max=1) # tf.clip_by_value : min, max값보다 작거나 같은 값을 clip 값으로 대체
     return anchors
-#%%
-def delta_to_bbox(anchors, bbox_deltas):
-    all_anc_width = anchors[..., 3] - anchors[..., 1]
-    all_anc_height = anchors[..., 2] - anchors[..., 0]
-    all_anc_ctr_x = anchors[..., 1] + 0.5 * all_anc_width
-    all_anc_ctr_y = anchors[..., 0] + 0.5 * all_anc_height
-
-    all_bbox_width = tf.exp(bbox_deltas[..., 3]) * all_anc_width
-    all_bbox_height = tf.exp(bbox_deltas[..., 2]) * all_anc_height
-    all_bbox_ctr_x = (bbox_deltas[..., 1] * all_anc_width) + all_anc_ctr_x
-    all_bbox_ctr_y = (bbox_deltas[..., 0] * all_anc_height) + all_anc_ctr_y
-
-    y1 = all_bbox_ctr_y - (0.5 * all_bbox_height)
-    x1 = all_bbox_ctr_x - (0.5 * all_bbox_width)
-    y2 = all_bbox_height + y1
-    x2 = all_bbox_width + x1
-    
-    return tf.stack([y1, x1, y2, x2], axis=-1)

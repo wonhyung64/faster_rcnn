@@ -2,7 +2,7 @@
 import tensorflow as tf
 
 #%%
-def region_reg_loss(pred, bbox_deltas, bbox_labels, hyper_params):
+def rpn_reg_loss_fn(pred, bbox_deltas, bbox_labels, hyper_params):
     #
     pred = tf.reshape(pred, (hyper_params["batch_size"], hyper_params['feature_map_shape'],
                                          hyper_params['feature_map_shape'],
@@ -29,7 +29,7 @@ def region_reg_loss(pred, bbox_deltas, bbox_labels, hyper_params):
     return loc_loss * tune_param / total_anchors_loc
 
 #%%
-def dtn_reg_loss(pred, frcnn_reg_actuals, frcnn_cls_actuals, hyper_params):
+def dtn_reg_loss_fn(pred, frcnn_reg_actuals, frcnn_cls_actuals, hyper_params):
 
     pred = tf.reshape(pred, (hyper_params["batch_size"], hyper_params['train_nms_topn'],
                                   hyper_params['total_labels'],4))
@@ -51,7 +51,7 @@ def dtn_reg_loss(pred, frcnn_reg_actuals, frcnn_cls_actuals, hyper_params):
     
     return loc_loss / total_pos_bboxes * 0.5
 #%%
-def region_cls_loss(pred, bbox_labels):
+def rpn_cls_loss_fn(pred, bbox_labels):
 
     indices = tf.where(tf.not_equal(bbox_labels, tf.constant(-1.0, dtype = tf.float32)))
     
@@ -62,7 +62,7 @@ def region_cls_loss(pred, bbox_labels):
     lf =  -tf.reduce_sum(target * tf.math.log(output + 1e-7) + (1-target) * tf.math.log(1 - output + 1e-7))
     return lf
 #%%
-def dtn_cls_loss(pred, true):
+def dtn_cls_loss_fn(pred, true):
 
     loss_for_all = -tf.math.reduce_sum(true * tf.math.log(pred + 1e-7), axis=-1)
 

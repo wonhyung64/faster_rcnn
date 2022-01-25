@@ -66,40 +66,51 @@ def randomly_select_xyz_mask(mask, select_xyz):
     return tf.logical_and(mask, selected_mask)
     
 #%%
-def generate_iou(anchors, gt_boxes):
-    bbox_y1, bbox_x1, bbox_y2, bbox_x2 = tf.split(anchors, 4, axis=-1) 
-    gt_y1, gt_x1, gt_y2, gt_x2 = tf.split(gt_boxes, 4, axis=-1) 
+class RoIDelta(Layer):
+    def __init__(self, hyper_params, **kwargs):
+        super(RoIDelta, self).__init__(**kwargs)
+        self.hyper_params = hyper_params
+        
+    def get_config(self):
+        config = super(RoIDelta, self).get_config()
+        config.update({"hyper_params": self.hyper_params})
+        return config
     
-    bbox_area = tf.squeeze((bbox_y2 - bbox_y1) * (bbox_x2 - bbox_x1), axis=-1) 
-    gt_area = tf.squeeze((gt_y2 - gt_y1) * (gt_x2 - gt_x1), axis = -1)
-    
-    x_top = tf.maximum(bbox_x1, tf.transpose(gt_x1, [0, 2, 1])) 
-    y_top = tf.maximum(bbox_y1, tf.transpose(gt_y1, [0, 2, 1]))
-    x_bottom = tf.minimum(bbox_x2, tf.transpose(gt_x2, [0, 2, 1]))
-    y_bottom = tf.minimum(bbox_y2, tf.transpose(gt_y2, [0, 2, 1]))
-    
-    intersection_area = tf.maximum(x_bottom - x_top, 0) * tf.maximum(y_bottom - y_top, 0)
-    
-    union_area = (tf.expand_dims(bbox_area, -1) + tf.expand_dims(gt_area, 1) - intersection_area)
-    
-    return intersection_area / union_area 
-#%%
-def bbox_to_delta(anchors, gt_boxes):
-    bbox_width = anchors[..., 3] - anchors[..., 1]
-    bbox_height = anchors[..., 2] - anchors[...,0]
-    bbox_ctr_x = anchors[..., 1] + 0.5 * bbox_width
-    bbox_ctr_y = anchors[..., 0] + 0.5 * bbox_height
-    
-    gt_width = gt_boxes[..., 3] - gt_boxes[..., 1]
-    gt_height = gt_boxes[..., 2] - gt_boxes[..., 0]
-    gt_ctr_x = gt_boxes[..., 1] + 0.5 * gt_width
-    gt_ctr_y = gt_boxes[..., 0] + 0.5 * gt_height
-    
-    bbox_width = tf.where(tf.equal(bbox_width, 0), 1e-3, bbox_width)
-    bbox_height = tf.where(tf.equal(bbox_height, 0), 1e-3, bbox_height)
-    delta_x = tf.where(tf.equal(gt_width, 0), tf.zeros_like(gt_width), tf.truediv((gt_ctr_x - bbox_ctr_x), bbox_width))
-    delta_y = tf.where(tf.equal(gt_height, 0), tf.zeros_like(gt_height), tf.truediv((gt_ctr_y - bbox_ctr_y), bbox_height))
-    delta_w = tf.where(tf.equal(gt_width, 0), tf.zeros_like(gt_width), tf.math.log(gt_width / bbox_width))
-    delta_h = tf.where(tf.equal(gt_height, 0), tf.zeros_like(gt_height), tf.math.log(gt_height / bbox_height))
-    
-    return tf.stack([delta_y, delta_x, delta_h, delta_w], axis=-1)
+    # @tf.function
+    def call(self, inputs):
+        roi_bboxes = inputs[0]
+        gt_boxes = inputs[1]
+        gt_labels = inputs[2]
+
+        total_labels = self.hyper_params["total_labels"]
+        total_pos_bboxes = self.hyper_params["total_pos_bboxes"]
+        total_neg_bboxes = self.hyper_params["total_neg_bboxes"]
+        variances = self.hyper_params["variances"]
+        #
+        iou_map = rpn_utils.generate_iou(roi_bboxes, gt_boxes)
+        #
+        max_indices_each_gt_box = tf.argmax(iou_map, axis=2, output_type=tf.int32)
+        merged_iou_map = tf.reduce_max(iou_map, axis=2)
+        pos_mask = tf.greater(merged_iou_map, 0.5)
+        pos_mask = rpn_utils.randomly_select_xyz_mask(pos_mask, tf.constant([total_pos_bboxes], dtype=tf.int32))
+        #
+        neg_mask = tf.logical_and(tf.less(merged_iou_map, 0.5), tf.greater(merged_iou_map, 0.1))
+        neg_mask = rpn_utils.randomly_select_xyz_mask(neg_mask, tf.constant([total_neg_bboxes], dtype=tf.int32))
+        #
+        gt_boxes_map = tf.gather(gt_boxes, max_indices_each_gt_box, batch_dims=1)
+        expanded_gt_boxes = tf.where(tf.expand_dims(pos_mask, axis=-1), gt_boxes_map, tf.zeros_like(gt_boxes_map))
+        #
+        gt_labels_map = tf.gather(gt_labels, max_indices_each_gt_box, batch_dims=1)
+
+        pos_gt_labels = tf.where(pos_mask, gt_labels_map, tf.constant(-1, dtype=tf.int32))
+        neg_gt_labels = tf.cast(neg_mask, dtype=tf.int32)
+
+        expanded_gt_labels = pos_gt_labels + neg_gt_labels 
+        #
+        roi_bbox_deltas = rpn_utils.bbox_to_delta(roi_bboxes, expanded_gt_boxes) / variances
+        #
+        roi_bbox_labels = tf.one_hot(expanded_gt_labels, total_labels)
+        scatter_indices = tf.tile(tf.expand_dims(roi_bbox_labels, -1), (1, 1, 1, 4))
+        roi_bbox_deltas = scatter_indices * tf.expand_dims(roi_bbox_deltas, -2)
+
+        return roi_bbox_deltas, roi_bbox_labels
