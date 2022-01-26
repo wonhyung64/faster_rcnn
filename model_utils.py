@@ -40,9 +40,9 @@ class RPN(Model):
     def call(self,inputs):
         feature_map = self.feature_extractor(inputs) 
         x = self.conv(feature_map)
-        cls = self.rpn_cls_output(x)
-        reg = self.rpn_reg_output(x)
-        return [reg, cls, feature_map]
+        rpn_reg_output = self.rpn_reg_output(x)
+        rpn_cls_output = self.rpn_cls_output(x)
+        return [rpn_reg_output, rpn_cls_output, feature_map]
 #%%
 class DTN(Model):
     def __init__(self, hyper_params):
@@ -68,7 +68,7 @@ class DTN(Model):
         fc3 = self.FC3(fc2)
         fc4 = self.FC4(fc3)
         fc5 = self.FC5(fc4)
-        cls = self.cls(fc5)
-        reg = self.reg(fc5)
-        return [reg, cls]
+        dtn_reg_output = self.reg(fc5)
+        dtn_cls_output = self.cls(fc5)
+        return [dtn_reg_output, dtn_cls_output]
 # %%

@@ -18,7 +18,8 @@ def get_hyper_params():
                     "pos_threshold" : 0.7,
                     "neg_threshold" : 0.3,
                     "batch_size" : 16,
-                    "iters" : 100,
+                    "iters" : 20000,
+                    "attempts" : 30,
                     "base_model" : "vgg19"
                     }
     return hyper_params

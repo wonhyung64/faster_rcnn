@@ -1,8 +1,9 @@
 #%%
 import numpy as np
 import tensorflow as tf
+import bbox_utils
 #%%
-def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params, chk_pos_num):
+def rpn_target(anchors, gt_boxes, gt_labels, hyper_params):
     batch_size = hyper_params['batch_size'] 
     feature_map_shape = hyper_params['feature_map_shape'] 
     anchor_count = hyper_params['anchor_count']  
@@ -12,14 +13,13 @@ def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params, chk
     pos_threshold = hyper_params["pos_threshold"]
     neg_threshold = hyper_params["neg_threshold"]
 
-    iou_map = generate_iou(anchors, gt_boxes)
+    iou_map = bbox_utils.generate_iou(anchors, gt_boxes)
     #
     max_indices_each_row = tf.argmax(iou_map, axis=2, output_type=tf.int32)
     max_indices_each_column = tf.argmax(iou_map, axis=1, output_type=tf.int32)
     merged_iou_map = tf.reduce_max(iou_map, axis=2) 
 
     pos_mask = tf.greater(merged_iou_map, pos_threshold)
-    chk_pos_num = np.size(np.where(pos_mask[0] == True))
     #
     valid_indices_cond = tf.not_equal(gt_labels, -1)
     
@@ -27,7 +27,6 @@ def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params, chk
     
     valid_max_indices = max_indices_each_column[valid_indices_cond]
     #
-
     scatter_bbox_indices = tf.stack([valid_indices[..., 0], valid_max_indices], 1)
     max_pos_mask = tf.scatter_nd(indices=scatter_bbox_indices, updates=tf.fill((tf.shape(valid_indices)[0], ), True), shape=tf.shape(pos_mask))
     pos_mask = tf.logical_or(pos_mask, max_pos_mask)
@@ -39,7 +38,6 @@ def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params, chk
     neg_mask = tf.logical_and(tf.less(merged_iou_map, neg_threshold), tf.logical_not(pos_mask))
     neg_mask = randomly_select_xyz_mask(neg_mask, neg_count)
     #
-    
     pos_labels = tf.where(pos_mask, tf.ones_like(pos_mask, dtype=tf.float32), tf.constant(-1.0, dtype=tf.float32))
     
     neg_labels = tf.cast(neg_mask, dtype=tf.float32)
@@ -48,54 +46,29 @@ def calculate_rpn_actual_outputs(anchors, gt_boxes, gt_labels, hyper_params, chk
 
     expanded_gt_boxes = tf.where(tf.expand_dims(pos_mask, -1), gt_boxes_map, tf.zeros_like(gt_boxes_map))
     
-    bbox_deltas = bbox_to_delta(anchors, expanded_gt_boxes) / variances
+    bbox_deltas = bbox_utils.bbox_to_delta(anchors, expanded_gt_boxes) / variances
 
     bbox_deltas = tf.reshape(bbox_deltas, (batch_size, feature_map_shape, feature_map_shape, anchor_count* 4))
     bbox_labels = tf.reshape(bbox_labels, (batch_size, feature_map_shape, feature_map_shape, anchor_count))
     
-    return bbox_deltas, bbox_labels, chk_pos_num
+    return bbox_deltas, bbox_labels
     
 #%%
-def randomly_select_xyz_mask(mask, select_xyz):
-    maxval = tf.reduce_max(select_xyz) * 10
-    random_mask = tf.random.uniform(tf.shape(mask), minval=1, maxval=maxval, dtype=tf.int32)
-    multiplied_mask = tf.cast(mask, tf.int32) * random_mask
-    sorted_mask = tf.argsort(multiplied_mask, direction="DESCENDING")
-    sorted_mask_indices = tf.argsort(sorted_mask)
-    selected_mask = tf.less(sorted_mask_indices, tf.expand_dims(select_xyz, 1))
-    return tf.logical_and(mask, selected_mask)
-    
-#%%
-class RoIDelta(Layer):
-    def __init__(self, hyper_params, **kwargs):
-        super(RoIDelta, self).__init__(**kwargs)
-        self.hyper_params = hyper_params
-        
-    def get_config(self):
-        config = super(RoIDelta, self).get_config()
-        config.update({"hyper_params": self.hyper_params})
-        return config
-    
-    # @tf.function
-    def call(self, inputs):
-        roi_bboxes = inputs[0]
-        gt_boxes = inputs[1]
-        gt_labels = inputs[2]
-
-        total_labels = self.hyper_params["total_labels"]
-        total_pos_bboxes = self.hyper_params["total_pos_bboxes"]
-        total_neg_bboxes = self.hyper_params["total_neg_bboxes"]
-        variances = self.hyper_params["variances"]
+def dtn_target(roi_bboxes, gt_boxes, gt_labels, hyper_params):
+        total_labels = hyper_params["total_labels"]
+        total_pos_bboxes = hyper_params["total_pos_bboxes"]
+        total_neg_bboxes = hyper_params["total_neg_bboxes"]
+        variances = hyper_params["variances"]
         #
-        iou_map = rpn_utils.generate_iou(roi_bboxes, gt_boxes)
+        iou_map = bbox_utils.generate_iou(roi_bboxes, gt_boxes)
         #
         max_indices_each_gt_box = tf.argmax(iou_map, axis=2, output_type=tf.int32)
         merged_iou_map = tf.reduce_max(iou_map, axis=2)
         pos_mask = tf.greater(merged_iou_map, 0.5)
-        pos_mask = rpn_utils.randomly_select_xyz_mask(pos_mask, tf.constant([total_pos_bboxes], dtype=tf.int32))
+        pos_mask = randomly_select_xyz_mask(pos_mask, tf.constant([total_pos_bboxes], dtype=tf.int32))
         #
         neg_mask = tf.logical_and(tf.less(merged_iou_map, 0.5), tf.greater(merged_iou_map, 0.1))
-        neg_mask = rpn_utils.randomly_select_xyz_mask(neg_mask, tf.constant([total_neg_bboxes], dtype=tf.int32))
+        neg_mask = randomly_select_xyz_mask(neg_mask, tf.constant([total_neg_bboxes], dtype=tf.int32))
         #
         gt_boxes_map = tf.gather(gt_boxes, max_indices_each_gt_box, batch_dims=1)
         expanded_gt_boxes = tf.where(tf.expand_dims(pos_mask, axis=-1), gt_boxes_map, tf.zeros_like(gt_boxes_map))
@@ -107,10 +80,21 @@ class RoIDelta(Layer):
 
         expanded_gt_labels = pos_gt_labels + neg_gt_labels 
         #
-        roi_bbox_deltas = rpn_utils.bbox_to_delta(roi_bboxes, expanded_gt_boxes) / variances
+        roi_deltas = bbox_utils.bbox_to_delta(roi_bboxes, expanded_gt_boxes) / variances
         #
-        roi_bbox_labels = tf.one_hot(expanded_gt_labels, total_labels)
-        scatter_indices = tf.tile(tf.expand_dims(roi_bbox_labels, -1), (1, 1, 1, 4))
-        roi_bbox_deltas = scatter_indices * tf.expand_dims(roi_bbox_deltas, -2)
+        roi_labels = tf.one_hot(expanded_gt_labels, total_labels)
+        scatter_indices = tf.tile(tf.expand_dims(roi_labels, -1), (1, 1, 1, 4))
+        roi_deltas = scatter_indices * tf.expand_dims(roi_deltas, -2)
 
-        return roi_bbox_deltas, roi_bbox_labels
+        return roi_deltas, roi_labels
+
+#%%
+def randomly_select_xyz_mask(mask, select_xyz):
+    maxval = tf.reduce_max(select_xyz) * 10
+    random_mask = tf.random.uniform(tf.shape(mask), minval=1, maxval=maxval, dtype=tf.int32)
+    multiplied_mask = tf.cast(mask, tf.int32) * random_mask
+    sorted_mask = tf.argsort(multiplied_mask, direction="DESCENDING")
+    sorted_mask_indices = tf.argsort(sorted_mask)
+    selected_mask = tf.less(sorted_mask_indices, tf.expand_dims(select_xyz, 1))
+    return tf.logical_and(mask, selected_mask)
+    

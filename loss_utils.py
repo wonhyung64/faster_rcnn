@@ -59,7 +59,7 @@ def rpn_cls_loss_fn(pred, bbox_labels):
 
     output = tf.gather_nd(pred, indices)
 
-    lf =  -tf.reduce_sum(target * tf.math.log(output + 1e-7) + (1-target) * tf.math.log(1 - output + 1e-7))
+    lf =  -tf.reduce_mean(target * tf.math.log(output + 1e-7) + (1-target) * tf.math.log(1 - output + 1e-7))
     return lf
 #%%
 def dtn_cls_loss_fn(pred, true):
