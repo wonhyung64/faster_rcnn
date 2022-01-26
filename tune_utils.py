@@ -20,6 +20,6 @@ def get_hyper_params():
                     "batch_size" : 16,
                     "iters" : 20000,
                     "attempts" : 30,
-                    "base_model" : "vgg19"
+                    "base_model" : "vgg16"
                     }
     return hyper_params
