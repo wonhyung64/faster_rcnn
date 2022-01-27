@@ -17,13 +17,13 @@ iters = hyper_params['iters']
 batch_size = hyper_params['batch_size']
 img_size = (hyper_params["img_size"], hyper_params["img_size"])
 
-train, labels = data_utils.fetch_dataset("voc07", "train", img_size)
+dataset, labels = data_utils.fetch_dataset("coco17", "train", img_size)
 
-train = train.map(lambda x, y, z: preprocessing_utils.preprocessing(x, y, z))
+dataset = dataset.map(lambda x, y, z: preprocessing_utils.preprocessing(x, y, z))
 data_shapes = ([None, None, None], [None, None], [None])
 padding_values = (tf.constant(0, tf.float32), tf.constant(0, tf.float32), tf.constant(-1, tf.int32))
-train = train.repeat().padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values)
-dataset = iter(train)
+dataset = dataset.repeat().padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values)
+dataset = iter(dataset)
 
 labels = ["bg"] + labels
 hyper_params["total_labels"] = len(labels)
@@ -35,7 +35,7 @@ rpn_model = model_utils.RPN(hyper_params)
 input_shape = (None, 500, 500, 3)
 rpn_model.build(input_shape)
 
-optimizer1 = keras.optimizers.SGD(learning_rate=1e-5)
+optimizer1 = keras.optimizers.Adam(learning_rate=1e-5)
 
 @tf.function
 def train_step1(img, bbox_deltas, bbox_labels, hyper_params):
@@ -58,7 +58,7 @@ dtn_model = model_utils.DTN(hyper_params)
 input_shape = (None, hyper_params['train_nms_topn'], 7, 7, 512)
 dtn_model.build(input_shape)
 
-optimizer2 = keras.optimizers.SGD(learning_rate=1e-5)
+optimizer2 = keras.optimizers.Adam(learning_rate=1e-5)
 
 @tf.function
 def train_step2(pooled_roi, roi_deltas, roi_labels):

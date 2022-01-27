@@ -19,7 +19,8 @@ def get_hyper_params():
                     "neg_threshold" : 0.3,
                     "batch_size" : 16,
                     "iters" : 20000,
-                    "attempts" : 30,
-                    "base_model" : "vgg16"
+                    "attempts" : 100,
+                    "base_model" : "vgg19",
+                    "mAP_threshold" : 0.5
                     }
     return hyper_params
