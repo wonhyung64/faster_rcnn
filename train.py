@@ -6,11 +6,11 @@ import tensorflow as tf
 from tqdm import tqdm
 from tensorflow import keras
 
-import utils, loss_utils, model_utils, preprocessing_utils, postprocessing_utils, tune_utils, data_utils, anchor_utils, target_utils
+import utils, loss_utils, model_utils, preprocessing_utils, postprocessing_utils, data_utils, anchor_utils, target_utils, test_utils
 
 #%% 
 
-hyper_params = tune_utils.get_hyper_params()
+hyper_params = utils.get_hyper_params()
 hyper_params['anchor_count'] = len(hyper_params['anchor_ratios']) * len(hyper_params['anchor_scales'])
 
 iters = hyper_params['iters']
@@ -25,15 +25,19 @@ padding_values = (tf.constant(0, tf.float32), tf.constant(0, tf.float32), tf.con
 dataset = dataset.repeat().padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values)
 dataset = iter(dataset)
 
+
 labels = ["bg"] + labels
 hyper_params["total_labels"] = len(labels)
 
 anchors = anchor_utils.generate_anchors(hyper_params)
 
 #%%
+weights_dir = os.getcwd() + "/atmp"
+weights_dir = weights_dir + "/" + os.listdir(weights_dir)[-1]
 rpn_model = model_utils.RPN(hyper_params)
 input_shape = (None, 500, 500, 3)
 rpn_model.build(input_shape)
+rpn_model.load_weights(weights_dir + '/rpn_weights/weights')
 
 optimizer1 = keras.optimizers.Adam(learning_rate=1e-5)
 
@@ -57,6 +61,7 @@ def train_step1(img, bbox_deltas, bbox_labels, hyper_params):
 dtn_model = model_utils.DTN(hyper_params)
 input_shape = (None, hyper_params['train_nms_topn'], 7, 7, 512)
 dtn_model.build(input_shape)
+dtn_model.load_weights(weights_dir + '/dtn_weights/weights')
 
 optimizer2 = keras.optimizers.Adam(learning_rate=1e-5)
 
@@ -108,10 +113,53 @@ for _ in progress_bar:
         )))
     
     if step % 1000 == 0 :
-        rpn_model.save_weights(atmp_dir + r'\rpn_weights\weights')
-        dtn_model.save_weights(atmp_dir + r'\dtn_weights\weights')
+        rpn_model.save_weights(atmp_dir + '/rpn_weights/weights')
+        dtn_model.save_weights(atmp_dir + '/dtn_weights/weights')
         print("Weights Saved")
 
 print("Time taken: %.2fs" % (time.time() - start_time))
-#%%
+utils.save_dict_to_file(hyper_params, atmp_dir + '/hyper_params')
+#%%test
+hyper_params["batch_size"] = batch_size = 1
 
+dataset, _ = data_utils.fetch_dataset("coco17", "test", img_size)
+
+dataset = dataset.map(lambda x, y, z: preprocessing_utils.preprocessing(x, y, z))
+dataset = dataset.repeat().padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values)
+dataset = iter(dataset)
+
+rpn_model = model_utils.RPN(hyper_params)
+input_shape = (None, 500, 500, 3)
+rpn_model.build(input_shape)
+rpn_model.load_weights(atmp_dir + '/rpn_weights/weights')
+
+dtn_model = model_utils.DTN(hyper_params)
+input_shape = (None, hyper_params['train_nms_topn'], 7, 7, 512)
+dtn_model.build(input_shape)
+dtn_model.load_weights(atmp_dir + '/dtn_weights/weights')
+
+total_time = []
+mAP = []
+
+progress_bar = tqdm(range(hyper_params['attempts']))
+for _ in progress_bar:
+    img, gt_boxes, gt_labels = next(dataset)
+    start_time = time.time()
+    rpn_reg_output, rpn_cls_output, feature_map = rpn_model(img)
+    roi_bboxes, _ = postprocessing_utils.RoIBBox(rpn_reg_output, rpn_cls_output, anchors, hyper_params)
+    pooled_roi = postprocessing_utils.RoIAlign(roi_bboxes, feature_map, hyper_params)
+    dtn_reg_output, dtn_cls_output = dtn_model(pooled_roi)
+    final_bboxes, final_labels, final_scores = postprocessing_utils.Decode(dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params)
+    time_ = float(time.time() - start_time)*1000
+    AP = test_utils.calculate_AP(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params)
+    total_time.append(time_)
+    mAP.append(AP)
+
+mAP_res = "%.2f" % (tf.reduce_mean(mAP))
+total_time_res = "%.2fms" % (tf.reduce_mean(total_time))
+
+result = {"mAP" : mAP_res,
+          "total_time" : total_time_res}
+
+utils.save_dict_to_file(result, atmp_dir + "/result")
+#%%test

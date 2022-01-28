@@ -32,7 +32,7 @@ def draw_nms_output(image, roi_bboxes, roi_scores, top_n, save_dir=None, save_nu
     if save_dir != None:    
         plt.figure()
         plt.imshow(image)
-        plt.savefig(save_dir + r'\res_nms\\' + str(save_num) + '.png')
+        plt.savefig(save_dir + '/res_nms/' + str(save_num) + '.png')
 
     else:
         plt.figure()
@@ -71,7 +71,7 @@ def draw_final_bbox_output(image, pred_deltas, roi_bboxes, hyper_params, save_di
     if save_dir != None:    
         plt.figure()
         plt.imshow(image)
-        plt.savefig(save_dir + r'\res_final_bbox\\' + str(save_num) + '.png')
+        plt.savefig(save_dir + '/res_final_bbox/' + str(save_num) + '.png')
 
     else:
         plt.figure()
@@ -109,12 +109,12 @@ def draw_frcnn_output(image, final_bboxes, labels, final_labels, final_scores, s
         draw.rectangle((x1, y1, x2, y2), outline=color, width=3)
     
     if save_dir != None:    
-        plt.figure()
+        plt.figure(figsize=(10,10))
         plt.imshow(image)
-        plt.savefig(save_dir + r'\res_frcnn\\' + str(save_num) + '.png')
+        plt.savefig(save_dir + '/res_frcnn/' + str(save_num) + '.png')
 
     else:
-        plt.figure()
+        plt.figure(figsize=(10, 10))
         plt.imshow(image)
         plt.show()
 
@@ -164,7 +164,8 @@ def calculate_AP(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params):
             else:
                 precision, recall = calculate_PR(final_bbox, gt_box, mAP_threshold)
                 ap = calculate_AP_per_class(recall, precision)
-
             AP.append(ap)
-    AP = tf.reduce_mean(AP)
+    if AP == []: AP = 1.0
+    else: AP = tf.reduce_mean(AP)
     return AP
+#%%
