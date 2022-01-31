@@ -16,7 +16,7 @@ hyper_params['anchor_count'] = len(hyper_params['anchor_ratios']) * len(hyper_pa
 hyper_params["batch_size"] = batch_size = 1
 img_size = (hyper_params["img_size"], hyper_params["img_size"])
 
-dataset, labels = data_utils.fetch_dataset("coco17", "train", img_size)
+dataset, labels = data_utils.fetch_dataset("coco17", "test", img_size)
 
 dataset = dataset.map(lambda x, y, z: preprocessing_utils.preprocessing(x, y, z))
 data_shapes = ([None, None, None], [None, None], [None])
@@ -82,5 +82,5 @@ def draw_custom_img(img_dir):
     final_bboxes, final_labels, final_scores = postprocessing_utils.Decode(dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params)
     test_utils.draw_frcnn_output(img, final_bboxes, labels, final_labels, final_scores)
 
-draw_custom_img("C:/won/test9.jpg")
+test_utils.draw_custom_img("C:/won/test9.jpg")
 # %%

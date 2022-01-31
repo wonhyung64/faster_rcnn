@@ -3,7 +3,7 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import bbox_utils
 
-from PIL import ImageDraw
+from PIL import Image,ImageDraw
 #%%
 def draw_nms_output(image, roi_bboxes, roi_scores, top_n, save_dir=None, save_num=None):
 

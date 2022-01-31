@@ -32,12 +32,9 @@ hyper_params["total_labels"] = len(labels)
 anchors = anchor_utils.generate_anchors(hyper_params)
 
 #%%
-weights_dir = os.getcwd() + "/atmp"
-weights_dir = weights_dir + "/" + os.listdir(weights_dir)[-1]
 rpn_model = model_utils.RPN(hyper_params)
 input_shape = (None, 500, 500, 3)
 rpn_model.build(input_shape)
-rpn_model.load_weights(weights_dir + '/rpn_weights/weights')
 
 optimizer1 = keras.optimizers.Adam(learning_rate=1e-5)
 
@@ -61,7 +58,6 @@ def train_step1(img, bbox_deltas, bbox_labels, hyper_params):
 dtn_model = model_utils.DTN(hyper_params)
 input_shape = (None, hyper_params['train_nms_topn'], 7, 7, 512)
 dtn_model.build(input_shape)
-dtn_model.load_weights(weights_dir + '/dtn_weights/weights')
 
 optimizer2 = keras.optimizers.Adam(learning_rate=1e-5)
 
@@ -119,6 +115,7 @@ for _ in progress_bar:
 
 print("Time taken: %.2fs" % (time.time() - start_time))
 utils.save_dict_to_file(hyper_params, atmp_dir + '/hyper_params')
+
 #%%test
 hyper_params["batch_size"] = batch_size = 1
 
@@ -162,4 +159,3 @@ result = {"mAP" : mAP_res,
           "total_time" : total_time_res}
 
 utils.save_dict_to_file(result, atmp_dir + "/result")
-#%%test
