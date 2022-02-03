@@ -6,7 +6,7 @@ import tensorflow as tf
 from tqdm import tqdm
 from tensorflow import keras
 
-import utils, loss_utils, model_utils, preprocessing_utils, postprocessing_utils, data_utils, anchor_utils, target_utils, test_utils
+import utils, loss_utils, model_utils, preprocessing_utils, postprocessing_utils, data_utils, anchor_utils, target_utils, test_utils, ship
 
 #%% 
 
@@ -17,12 +17,13 @@ iters = hyper_params['iters']
 batch_size = hyper_params['batch_size']
 img_size = (hyper_params["img_size"], hyper_params["img_size"])
 
-dataset, labels = data_utils.fetch_dataset("coco17", "train", img_size)
+dataset, labels = ship.fetch_dataset("ship", "train", img_size)
 
-dataset = dataset.map(lambda x, y, z: preprocessing_utils.preprocessing(x, y, z))
+dataset = dataset.map(lambda x, y, z, w: preprocessing_utils.preprocessing(x, y, z, w))
+# dataset = dataset.map(lambda x, y, z, w: preprocessing_utils.preprocessing(x, y, z, w))
 data_shapes = ([None, None, None], [None, None], [None])
 padding_values = (tf.constant(0, tf.float32), tf.constant(0, tf.float32), tf.constant(-1, tf.int32))
-dataset = dataset.repeat().padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values)
+dataset = dataset.repeat().padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values, drop_remainder=True)
 dataset = iter(dataset)
 
 
@@ -88,11 +89,24 @@ start_time = time.time()
 
 for _ in progress_bar:
     img, gt_boxes, gt_labels = next(dataset)
+    img.shape
+    gt_boxes.shape
+    gt_labels.shape
     bbox_deltas, bbox_labels = target_utils.rpn_target(anchors, gt_boxes, gt_labels, hyper_params)
+    bbox_deltas.shape
+    bbox_labels.shape
     rpn_reg_loss, rpn_cls_loss, rpn_reg_output, rpn_cls_output, feature_map = train_step1(img, bbox_deltas, bbox_labels, hyper_params)
+    rpn_reg_output.shape
+    rpn_cls_output.shape
+    feature_map.shape
+
     roi_bboxes, _ = postprocessing_utils.RoIBBox(rpn_reg_output, rpn_cls_output, anchors, hyper_params)
+    roi_bboxes.shape
     pooled_roi = postprocessing_utils.RoIAlign(roi_bboxes, feature_map, hyper_params)
+    pooled_roi.shape
     roi_deltas, roi_labels = target_utils.dtn_target(roi_bboxes, gt_boxes, gt_labels, hyper_params)
+    roi_deltas.shape
+    roi_labels.shape
     dtn_reg_loss, dtn_cls_loss = train_step2(pooled_roi, roi_deltas, roi_labels)
 
     step += 1
@@ -119,9 +133,9 @@ utils.save_dict_to_file(hyper_params, atmp_dir + '/hyper_params')
 #%%test
 hyper_params["batch_size"] = batch_size = 1
 
-dataset, _ = data_utils.fetch_dataset("coco17", "test", img_size)
+dataset, _ = ship.fetch_dataset("coco17", "test", img_size)
 
-dataset = dataset.map(lambda x, y, z: preprocessing_utils.preprocessing(x, y, z))
+dataset = dataset.map(lambda x, y, z, w: preprocessing_utils.preprocessing(x, y, z, w))
 dataset = dataset.repeat().padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values)
 dataset = iter(dataset)
 
@@ -141,6 +155,9 @@ mAP = []
 progress_bar = tqdm(range(hyper_params['attempts']))
 for _ in progress_bar:
     img, gt_boxes, gt_labels = next(dataset)
+    img.shape
+    gt_boxes.shape
+    gt_labels.shape
     start_time = time.time()
     rpn_reg_output, rpn_cls_output, feature_map = rpn_model(img)
     roi_bboxes, _ = postprocessing_utils.RoIBBox(rpn_reg_output, rpn_cls_output, anchors, hyper_params)
@@ -159,3 +176,39 @@ result = {"mAP" : mAP_res,
           "total_time" : total_time_res}
 
 utils.save_dict_to_file(result, atmp_dir + "/result")
+#%%
+
+for i in range(400):
+    try:
+        print(i)
+        img, gt_boxes, gt_labels = next(dataset)
+        print(gt_labels.shape)
+    except:
+        print("except")
+        dataset, labels = ship.fetch_dataset("ship", "train", img_size)
+
+        dataset = dataset.map(lambda x, y, z, w: preprocessing_utils.preprocessing(x, y, z, w))
+        # dataset = dataset.map(lambda x, y, z, w: preprocessing_utils.preprocessing(x, y, z, w))
+        data_shapes = ([None, None, None], [None, None], [None])
+        padding_values = (tf.constant(0, tf.float32), tf.constant(0, tf.float32), tf.constant(-1, tf.int32))
+        dataset = dataset.repeat().padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values, drop_remainder=True)
+        dataset = iter(dataset)
+
+        print(i)
+        img, gt_boxes, gt_labels = next(dataset)
+        print(gt_labels.shape)
+    # img[3]
+    # gt_boxes[3]
+    # gt_labels[3]
+    # except: 
+    #     img_, gt_boxes_, gt_labels_ = next(dataset)
+    #     img_[3]
+    #     gt_boxes_[3]
+    #     gt_labels_[3]
+    #     break
+# %%
+'''
+194번째만 계속 튕습
+data 불러올떄 try except 로 처리하여 학습
+'''
+

@@ -49,7 +49,7 @@ def dtn_reg_loss_fn(pred, frcnn_reg_actuals, frcnn_cls_actuals, hyper_params):
     
     total_pos_bboxes = tf.reduce_sum(pos_mask)
     
-    return loc_loss / total_pos_bboxes * 0.5
+    return tf.clip_by_value(loc_loss, 1e-9, 1e+9) / total_pos_bboxes * tf.constant(0.5)
 #%%
 def rpn_cls_loss_fn(pred, bbox_labels):
 
