@@ -17,13 +17,12 @@ hyper_params["batch_size"] = batch_size = 1
 img_size = (hyper_params["img_size"], hyper_params["img_size"])
 
 dataset, labels = data_utils.fetch_dataset("coco17", "test", img_size)
-
 dataset = dataset.map(lambda x, y, z: preprocessing_utils.preprocessing(x, y, z))
 data_shapes = ([None, None, None], [None, None], [None])
 padding_values = (tf.constant(0, tf.float32), tf.constant(0, tf.float32), tf.constant(-1, tf.int32))
 dataset = dataset.repeat().padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values)
 dataset = iter(dataset)
-
+next(dataset)
 labels = ["bg"] + labels
 hyper_params["total_labels"] = len(labels)
 
@@ -31,7 +30,7 @@ anchors = anchor_utils.generate_anchors(hyper_params)
 
 #%%
 weights_dir = os.getcwd() + "/atmp"
-weights_dir = weights_dir + "/" + os.listdir(weights_dir)[-2]
+weights_dir = weights_dir + "/" + os.listdir(weights_dir)[6]
 
 rpn_model = model_utils.RPN(hyper_params)
 input_shape = (None, 500, 500, 3)
