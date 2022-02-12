@@ -20,7 +20,7 @@ def get_hyper_params():
                     "batch_size" : 16,
                     "iters" : 5000,
                     "attempts" : 100,
-                    "base_model" : "vgg19",
+                    "base_model" : "vgg16",
                     "mAP_threshold" : 0.5
                     }
     return hyper_params
@@ -31,7 +31,7 @@ def save_dict_to_file(dic,dict_dir):
     f.close()
 #%%
 def generate_save_dir(atmp_dir, hyper_params):
-    atmp_dir = atmp_dir + '/atmp'
+    atmp_dir = atmp_dir + '/frcnn_atmp'
 
     i = 1
     tmp = True
