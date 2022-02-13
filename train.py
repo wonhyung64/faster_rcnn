@@ -6,7 +6,7 @@ import tensorflow as tf
 from tqdm import tqdm
 from tensorflow import keras
 
-import utils, loss_utils, model_utils, preprocessing_utils, postprocessing_utils, data_utils, anchor_utils, target_utils, test_utils
+import utils, loss_utils, model_utils, preprocessing_utils, postprocessing_utils, anchor_utils, target_utils, test_utils
 
 #%% 
 
@@ -16,15 +16,22 @@ hyper_params['anchor_count'] = len(hyper_params['anchor_ratios']) * len(hyper_pa
 iters = hyper_params['iters']
 batch_size = hyper_params['batch_size']
 img_size = (hyper_params["img_size"], hyper_params["img_size"])
+dataset_name = hyper_params["dataset_name"]
 
-dataset, labels = data_utils.fetch_dataset("coco17", "train", img_size)
+if dataset_name == "ship":
+    import ship
+    dataset, labels = ship.fetch_dataset(dataset_name, "train", img_size)
+    dataset = dataset.map(lambda x, y, z, w: preprocessing_utils.preprocessing_ship(x, y, z, w))
+else:
+    import data_utils
+    dataset, labels = data_utils.fetch_dataset(dataset_name, "train", img_size, save_dir="/home1/wonhyung64")
+    dataset = dataset.map(lambda x, y, z: preprocessing_utils.preprocessing(x, y, z))
 
-dataset = dataset.map(lambda x, y, z: preprocessing_utils.preprocessing(x, y, z))
 data_shapes = ([None, None, None], [None, None], [None])
 padding_values = (tf.constant(0, tf.float32), tf.constant(0, tf.float32), tf.constant(-1, tf.int32))
-dataset = dataset.repeat().padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values, drop_remainder=True)
+# dataset = dataset.shuffle(buffer_size=5000, reshuffle_each_iteration=True)
+dataset = dataset.padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values, drop_remainder=True)
 dataset = iter(dataset)
-
 
 labels = ["bg"] + labels
 hyper_params["total_labels"] = len(labels)
@@ -36,7 +43,7 @@ rpn_model = model_utils.RPN(hyper_params)
 input_shape = (None, 500, 500, 3)
 rpn_model.build(input_shape)
 
-optimizer1 = keras.optimizers.Adam(learning_rate=1e-3)
+optimizer1 = keras.optimizers.Adam(learning_rate=1e-5)
 
 @tf.function
 def train_step1(img, bbox_deltas, bbox_labels, hyper_params):
@@ -87,7 +94,8 @@ progress_bar.set_description('iteration {}/{} | current loss ?'.format(step, hyp
 start_time = time.time()
 
 for _ in progress_bar:
-    img, gt_boxes, gt_labels = next(dataset)
+    try: img, gt_boxes, gt_labels = next(dataset)
+    except: continue
     bbox_deltas, bbox_labels = target_utils.rpn_target(anchors, gt_boxes, gt_labels, hyper_params)
     rpn_reg_loss, rpn_cls_loss, rpn_reg_output, rpn_cls_output, feature_map = train_step1(img, bbox_deltas, bbox_labels, hyper_params)
 
@@ -120,9 +128,15 @@ utils.save_dict_to_file(hyper_params, atmp_dir + '/hyper_params')
 #%%test
 hyper_params["batch_size"] = batch_size = 1
 
-dataset, _ = data_utils.fetch_dataset("coco17", "test", img_size)
+if dataset_name == "ship":
+    import ship
+    dataset, labels = ship.fetch_dataset(dataset_name, "train", img_size)
+    dataset = dataset.map(lambda x, y, z, w: preprocessing_utils.preprocessing_ship(x, y, z, w))
+else:
+    import data_utils
+    dataset, labels = data_utils.fetch_dataset(dataset_name, "train", img_size, save_dir="/home1/wonhyung64")
+    dataset = dataset.map(lambda x, y, z: preprocessing_utils.preprocessing(x, y, z))
 
-dataset = dataset.map(lambda x, y, z: preprocessing_utils.preprocessing(x, y, z))
 dataset = dataset.repeat().padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values)
 dataset = iter(dataset)
 
@@ -139,12 +153,13 @@ dtn_model.load_weights(atmp_dir + '/dtn_weights/weights')
 total_time = []
 mAP = []
 
+img_num = 0
 progress_bar = tqdm(range(hyper_params['attempts']))
 for _ in progress_bar:
     img, gt_boxes, gt_labels = next(dataset)
     start_time = time.time()
     rpn_reg_output, rpn_cls_output, feature_map = rpn_model(img)
-    roi_bboxes, _ = postprocessing_utils.RoIBBox(rpn_reg_output, rpn_cls_output, anchors, hyper_params)
+    roi_bboxes, roi_scores = postprocessing_utils.RoIBBox(rpn_reg_output, rpn_cls_output, anchors, hyper_params)
     pooled_roi = postprocessing_utils.RoIAlign(roi_bboxes, feature_map, hyper_params)
     dtn_reg_output, dtn_cls_output = dtn_model(pooled_roi)
     final_bboxes, final_labels, final_scores = postprocessing_utils.Decode(dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params)
@@ -152,6 +167,10 @@ for _ in progress_bar:
     AP = test_utils.calculate_AP(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params)
     total_time.append(time_)
     mAP.append(AP)
+
+    test_utils.draw_rpn_output(img, roi_bboxes, roi_scores, 5, atmp_dir, img_num)
+    test_utils.draw_dtn_output(img, final_bboxes, labels, final_labels, final_scores, atmp_dir, img_num)
+    img_num += 1
 
 mAP_res = "%.2f" % (tf.reduce_mean(mAP))
 total_time_res = "%.2fms" % (tf.reduce_mean(total_time))

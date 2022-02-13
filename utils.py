@@ -15,13 +15,14 @@ def get_hyper_params():
                     "total_neg_bboxes": 128,
                     "pooling_size": (7,7),
                     "variances": [0.1, 0.1, 0.2, 0.2],
-                    "pos_threshold" : 0.7,
+                    "pos_threshold" : 0.65,
                     "neg_threshold" : 0.25,
-                    "batch_size" : 16,
-                    "iters" : 5000,
+                    "batch_size" : 2,
+                    "iters" : 350000,
                     "attempts" : 100,
                     "base_model" : "vgg16",
-                    "mAP_threshold" : 0.5
+                    "mAP_threshold" : 0.5,
+                    "dataset_name" : "ship"
                     }
     return hyper_params
 #%%
@@ -46,5 +47,7 @@ def generate_save_dir(atmp_dir, hyper_params):
 
     os.makedirs(atmp_dir + '/rpn_weights')
     os.makedirs(atmp_dir + '/dtn_weights')
+    os.makedirs(atmp_dir + '/rpn_output')
+    os.makedirs(atmp_dir + '/dtn_output')
 
     return atmp_dir

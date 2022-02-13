@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-import utils, model_utils, preprocessing_utils, postprocessing_utils, data_utils, anchor_utils, test_utils
+import utils, model_utils, preprocessing_utils, postprocessing_utils, anchor_utils, test_utils
 
 #%% 
 hyper_params = utils.get_hyper_params()
@@ -15,9 +15,17 @@ hyper_params['anchor_count'] = len(hyper_params['anchor_ratios']) * len(hyper_pa
 
 hyper_params["batch_size"] = batch_size = 1
 img_size = (hyper_params["img_size"], hyper_params["img_size"])
+dataset_name = hyper_params["dataset_name"]
 
-dataset, labels = data_utils.fetch_dataset("voc07", "train", img_size)
-dataset = dataset.map(lambda x, y, z: preprocessing_utils.preprocessing(x, y, z))
+if dataset_name == "ship":
+    import ship
+    dataset, labels = ship.fetch_dataset(dataset_name, "train", img_size)
+    dataset = dataset.map(lambda x, y, z, w: preprocessing_utils.preprocessing_ship(x, y, z, w))
+else:
+    import data_utils
+    dataset, labels = data_utils.fetch_dataset(dataset_name, "train", img_size)
+    dataset = dataset.map(lambda x, y, z: preprocessing_utils.preprocessing(x, y, z))
+
 data_shapes = ([None, None, None], [None, None], [None])
 padding_values = (tf.constant(0, tf.float32), tf.constant(0, tf.float32), tf.constant(-1, tf.int32))
 dataset = dataset.repeat().padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values)
@@ -30,7 +38,7 @@ anchors = anchor_utils.generate_anchors(hyper_params)
 
 #%%
 weights_dir = os.getcwd() + "/frcnn_atmp"
-weights_dir = weights_dir + "/" + os.listdir(weights_dir)[-1]
+weights_dir = weights_dir + "/" + os.listdir(weights_dir)[3]
 
 rpn_model = model_utils.RPN(hyper_params)
 input_shape = (None, 500, 500, 3)
@@ -49,7 +57,6 @@ dtn_model.load_weights(weights_dir + '/dtn_weights/weights')
 total_time = []
 mAP = []
 
-hyper_params["attempts"] = 4000
 progress_bar = tqdm(range(hyper_params['attempts']))
 for _ in progress_bar:
     img, gt_boxes, gt_labels = next(dataset)
@@ -59,11 +66,9 @@ for _ in progress_bar:
     pooled_roi = postprocessing_utils.RoIAlign(roi_bboxes, feature_map, hyper_params)
     dtn_reg_output, dtn_cls_output = dtn_model(pooled_roi)
     final_bboxes, final_labels, final_scores = postprocessing_utils.Decode(dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params)
-    final_bboxes[final_labels == 7]
-
     time_ = float(time.time() - start_time)*1000
     AP = test_utils.calculate_AP(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params)
-    # test_utils.draw_frcnn_output(img, final_bboxes, labels, final_labels, final_scores)
+    test_utils.draw_dtn_output(img, final_bboxes, labels, final_labels, final_scores)
     total_time.append(time_)
     mAP.append(AP)
     
