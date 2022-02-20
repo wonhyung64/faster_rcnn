@@ -6,7 +6,7 @@ def get_hyper_params():
     hyper_params = {"img_size": 500,
                     "feature_map_shape": 31,
                     "anchor_ratios": [1., 2., 1./2.],
-                    "anchor_scales": [128, 256, 512],
+                    "anchor_scales": [32,64,128],
                     "pre_nms_topn": 6000,
                     "train_nms_topn": 1500,
                     "test_nms_topn": 300,

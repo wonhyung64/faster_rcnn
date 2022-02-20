@@ -4,8 +4,8 @@ import tensorflow as tf
 #%%
 def preprocessing(img, gt_boxes, gt_labels):# resize, flip_left_right
     gt_labels = tf.cast(gt_labels + 1, tf.int32)
-    if (np.random.uniform(0,1,1) > 0.5) == True:
-        img, gt_boxes = flip_horizontal(img, gt_boxes)
+    # if (np.random.uniform(0,1,1) > 0.5) == True:
+    # img, gt_boxes = flip_horizontal(img, gt_boxes)
     return img, gt_boxes, gt_labels
 #%%
 def preprocessing_ship(img, gt_boxes, gt_labels, filename=None):# resize, flip_left_right

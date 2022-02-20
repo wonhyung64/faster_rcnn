@@ -1,4 +1,5 @@
 #%%
+import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import bbox_utils
@@ -112,7 +113,7 @@ def calculate_AP_per_class(recall, precision):
     return AP
 
 #%%
-def calculate_AP(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params):
+def calculate_AP50(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params):
     total_labels = hyper_params["total_labels"]
     mAP_threshold = hyper_params["mAP_threshold"]
     AP = []
@@ -130,3 +131,23 @@ def calculate_AP(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params):
     else: AP = tf.reduce_mean(AP)
     return AP
 #%%
+def calculate_AP(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params):
+    total_labels = hyper_params["total_labels"]
+    mAP_threshold_lst = np.arange(0.5, 1., 0.05)
+    APs = []
+    for mAP_threshold in mAP_threshold_lst:
+        AP = []
+        for c in range(1, total_labels):
+            if tf.math.reduce_any(final_labels == c) or tf.math.reduce_any(gt_labels == c):
+                final_bbox = tf.expand_dims(final_bboxes[final_labels == c], axis=0)
+                gt_box = tf.expand_dims(gt_boxes[gt_labels == c], axis=0)
+
+                if final_bbox.shape[1] == 0 or gt_box.shape[1] == 0: ap = tf.constant(0.)
+                else:
+                    precision, recall = calculate_PR(final_bbox, gt_box, mAP_threshold)
+                    ap = calculate_AP_per_class(recall, precision)
+                AP.append(ap)
+        if AP == []: AP = 1.0
+        else: AP = tf.reduce_mean(AP)
+        APs.append(AP)
+    return tf.reduce_mean(APs)

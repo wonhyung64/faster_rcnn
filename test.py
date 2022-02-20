@@ -40,7 +40,7 @@ anchors = anchor_utils.generate_anchors(hyper_params)
 
 #%%
 weights_dir = os.getcwd() + "/frcnn_atmp"
-weights_dir = weights_dir + "/" + os.listdir(weights_dir)[0]
+weights_dir = weights_dir + "/" + os.listdir(weights_dir)[4]
 
 rpn_model = model_utils.RPN(hyper_params)
 input_shape = (None, 500, 500, 3)
@@ -59,7 +59,7 @@ dtn_model.load_weights(weights_dir + '/dtn_weights/weights')
 total_time = []
 mAP = []
 num = 0
-progress_bar = tqdm(range(hyper_params['attempts']))
+progress_bar = tqdm(range(300))
 for _ in progress_bar:
     img, gt_boxes, gt_labels = next(dataset)
     start_time = time.time()
@@ -70,11 +70,12 @@ for _ in progress_bar:
     final_bboxes, final_labels, final_scores = postprocessing_utils.Decode(dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params)
     time_ = float(time.time() - start_time)*1000
     AP = test_utils.calculate_AP(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params)
-    print(num)
-    test_utils.draw_dtn_output(img, final_bboxes, labels, final_labels, final_scores, )
+    # AP = test_utils.calculate_AP50(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params)
+    # print(num)
+    # test_utils.draw_dtn_output(img, final_bboxes, labels, final_labels, final_scores, )
     total_time.append(time_)
     mAP.append(AP)
-    num += 1
+    # num += 1
     
 
 print("mAP: %.2f" % (tf.reduce_mean(mAP)))
@@ -95,3 +96,4 @@ def draw_custom_img(img_dir):
     test_utils.draw_frcnn_output(img, final_bboxes, labels, final_labels, final_scores)
 
 test_utils.draw_custom_img("C:/won/test9.jpg")
+#%%
