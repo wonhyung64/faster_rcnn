@@ -9,7 +9,6 @@ from tensorflow import keras
 import utils, loss_utils, model_utils, preprocessing_utils, postprocessing_utils, anchor_utils, target_utils, test_utils
 
 #%% 
-
 hyper_params = utils.get_hyper_params()
 hyper_params['anchor_count'] = len(hyper_params['anchor_ratios']) * len(hyper_params['anchor_scales'])
 
@@ -24,13 +23,13 @@ if dataset_name == "ship":
     dataset = dataset.map(lambda x, y, z, w: preprocessing_utils.preprocessing_ship(x, y, z, w))
 else:
     import data_utils
-    dataset, labels = data_utils.fetch_dataset(dataset_name, "train", img_size, save_dir="/home1/wonhyung64")
+    dataset, labels = data_utils.fetch_dataset(dataset_name, "train", img_size)
     dataset = dataset.map(lambda x, y, z: preprocessing_utils.preprocessing(x, y, z))
 
 data_shapes = ([None, None, None], [None, None], [None])
 padding_values = (tf.constant(0, tf.float32), tf.constant(0, tf.float32), tf.constant(-1, tf.int32))
-# dataset = dataset.shuffle(buffer_size=5000, reshuffle_each_iteration=True)
-dataset = dataset.padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values, drop_remainder=True)
+dataset = dataset.shuffle(buffer_size=14000, reshuffle_each_iteration=True)
+dataset = dataset.repeat().padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values, drop_remainder=True)
 dataset = iter(dataset)
 
 labels = ["bg"] + labels
@@ -43,7 +42,12 @@ rpn_model = model_utils.RPN(hyper_params)
 input_shape = (None, 500, 500, 3)
 rpn_model.build(input_shape)
 
-optimizer1 = keras.optimizers.Adam(learning_rate=1e-5)
+boundaries = [100000, 200000, 300000]
+values = [1e-5, 1e-6, 1e-7, 1e-8]
+learning_rate_fn = tf.keras.optimizers.schedules.PiecewiseConstantDecay(boundaries, values)
+
+optimizer1 = tf.keras.optimizers.Adam(learning_rate=learning_rate_fn)
+# optimizer1 = keras.optimizers.Adam(learning_rate=1e-5)
 
 @tf.function
 def train_step1(img, bbox_deltas, bbox_labels, hyper_params):
@@ -66,7 +70,8 @@ dtn_model = model_utils.DTN(hyper_params)
 input_shape = (None, hyper_params['train_nms_topn'], 7, 7, 512)
 dtn_model.build(input_shape)
 
-optimizer2 = keras.optimizers.Adam(learning_rate=1e-5)
+optimizer2 = tf.keras.optimizers.Adam(learning_rate=learning_rate_fn)
+# optimizer2 = keras.optimizers.Adam(learning_rate=1e-5)
 
 @tf.function
 def train_step2(pooled_roi, roi_deltas, roi_labels):
@@ -83,10 +88,16 @@ def train_step2(pooled_roi, roi_deltas, roi_labels):
 
     return dtn_reg_loss, dtn_cls_loss
 
-
 #%%
 atmp_dir = os.getcwd()
-atmp_dir = utils.generate_save_dir(atmp_dir, hyper_params)
+atmp_dir = atmp_dir + "/frcnn_atmp/4"
+
+rpn_model.load_weights(atmp_dir + r"/rpn_weights/weights")
+dtn_model.load_weights(atmp_dir + r"/dtn_weights/weights")
+
+#%%
+# atmp_dir = os.getcwd()
+# atmp_dir = utils.generate_save_dir(atmp_dir, hyper_params)
 
 step = 0
 progress_bar = tqdm(range(hyper_params['iters']))
@@ -134,7 +145,7 @@ if dataset_name == "ship":
     dataset = dataset.map(lambda x, y, z, w: preprocessing_utils.preprocessing_ship(x, y, z, w))
 else:
     import data_utils
-    dataset, labels = data_utils.fetch_dataset(dataset_name, "train", img_size, save_dir="/home1/wonhyung64")
+    dataset, labels = data_utils.fetch_dataset(dataset_name, "train", img_size)
     dataset = dataset.map(lambda x, y, z: preprocessing_utils.preprocessing(x, y, z))
 
 dataset = dataset.repeat().padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values)
@@ -164,7 +175,7 @@ for _ in progress_bar:
     dtn_reg_output, dtn_cls_output = dtn_model(pooled_roi)
     final_bboxes, final_labels, final_scores = postprocessing_utils.Decode(dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params)
     time_ = float(time.time() - start_time)*1000
-    AP = test_utils.calculate_AP(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params)
+    AP = test_utils.calculate_AP50(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params)
     total_time.append(time_)
     mAP.append(AP)
 
