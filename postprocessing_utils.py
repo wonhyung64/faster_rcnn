@@ -2,11 +2,11 @@
 import tensorflow as tf
 import bbox_utils
 #%%
-def RoIBBox(rpn_reg_output, rpn_cls_output, anchors, hyper_params, test=False):
+def RoIBBox(rpn_reg_output, rpn_cls_output, anchors, hyper_params, nms_iou_threshold=0.7, test=False):
         pre_nms_topn = hyper_params["pre_nms_topn"]
         post_nms_topn = hyper_params["train_nms_topn"]
         if test == True: post_nms_topn = hyper_params["test_nms_topn"]
-        nms_iou_threshold = hyper_params["nms_iou_threshold"] 
+        # nms_iou_threshold = hyper_params["nms_iou_threshold"] 
         variances = hyper_params["variances"]
         total_anchors = hyper_params["feature_map_shape"]**2 * hyper_params["anchor_count"]
         batch_size = tf.shape(rpn_reg_output)[0]
@@ -55,7 +55,7 @@ def RoIAlign(roi_bboxes, feature_map, hyper_params):
     return pooled_roi
 
 #%%
-def Decode(dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params, max_total_size=200, score_threshold=0.7):
+def Decode(dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params, max_total_size=200, score_threshold=0.7, iou_threshold=0.5):
     batch_size = tf.shape(dtn_reg_output)[0]
     variances = hyper_params["variances"]
     total_labels = hyper_params["total_labels"]
@@ -74,6 +74,7 @@ def Decode(dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params, max_total_s
                         pred_bboxes, pred_labels,
                         max_output_size_per_class = max_total_size,
                         max_total_size = max_total_size,
+                        iou_threshold=iou_threshold,
                         score_threshold=score_threshold
                     )
     return final_bboxes, final_labels, final_scores

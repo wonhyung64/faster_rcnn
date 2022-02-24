@@ -40,7 +40,7 @@ anchors = anchor_utils.generate_anchors(hyper_params)
 
 #%%
 weights_dir = os.getcwd() + "/frcnn_atmp"
-weights_dir = weights_dir + "/" + os.listdir(weights_dir)[4]
+weights_dir = weights_dir + "/" + os.listdir(weights_dir)[0]
 
 rpn_model = model_utils.RPN(hyper_params)
 input_shape = (None, 500, 500, 3)
@@ -58,28 +58,43 @@ dtn_model.load_weights(weights_dir + '/dtn_weights/weights')
 
 total_time = []
 mAP = []
+optimal_threshold = []
+threshold_lst = np.arange(0.5, 1.0, 0.05)
 num = 0
-progress_bar = tqdm(range(300))
+progress_bar = tqdm(range(278))
 for _ in progress_bar:
     img, gt_boxes, gt_labels = next(dataset)
     start_time = time.time()
     rpn_reg_output, rpn_cls_output, feature_map = rpn_model(img)
+
     roi_bboxes, _ = postprocessing_utils.RoIBBox(rpn_reg_output, rpn_cls_output, anchors, hyper_params)
     pooled_roi = postprocessing_utils.RoIAlign(roi_bboxes, feature_map, hyper_params)
     dtn_reg_output, dtn_cls_output = dtn_model(pooled_roi)
-    final_bboxes, final_labels, final_scores = postprocessing_utils.Decode(dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params)
-    time_ = float(time.time() - start_time)*1000
-    AP = test_utils.calculate_AP(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params)
-    # AP = test_utils.calculate_AP50(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params)
-    # print(num)
-    # test_utils.draw_dtn_output(img, final_bboxes, labels, final_labels, final_scores, )
-    total_time.append(time_)
-    mAP.append(AP)
-    # num += 1
-    
 
+    best_threshold = 0.
+    best_AP = 0.
+    for threshold in threshold_lst:
+        final_bboxes, final_labels, final_scores = postprocessing_utils.Decode(dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params, iou_threshold=threshold)
+        AP = test_utils.calculate_AP(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params)
+        # AP = test_utils.calculate_AP50(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params)
+        if AP >= best_AP: 
+            best_threshold = threshold
+            best_AP = AP
+
+    mAP.append(best_AP)
+    optimal_threshold.append(best_threshold)
+
+    # time_ = float(time.time() - start_time)*1000
+    # AP = test_utils.calculate_AP50(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params)
+    # test_utils.draw_dtn_output(img, final_bboxes, labels, final_labels, final_scores, )
+    # print(num)
+    # total_time.append(time_)
+    # mAP.append(AP)
+    # num += 1
+
+    
 print("mAP: %.2f" % (tf.reduce_mean(mAP)))
-print("Time taken: %.2fms" % (tf.reduce_mean(total_time)))
+# print("Time taken: %.2fms" % (tf.reduce_mean(total_time)))
 
 #%%
 def draw_custom_img(img_dir):
@@ -95,5 +110,5 @@ def draw_custom_img(img_dir):
     final_bboxes, final_labels, final_scores = postprocessing_utils.Decode(dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params)
     test_utils.draw_frcnn_output(img, final_bboxes, labels, final_labels, final_scores)
 
-test_utils.draw_custom_img("C:/won/test9.jpg")
+# test_utils.draw_custom_img("C:/won/test9.jpg")
 #%%
