@@ -1,8 +1,9 @@
-#%%
-import numpy as np
 import tensorflow as tf
-import bbox_utils
-#%%
+from .bbox_utils import(
+    generate_iou,
+    bbox_to_delta,
+)
+
 def rpn_target(anchors, gt_boxes, gt_labels, hyper_params):
     batch_size = hyper_params['batch_size'] 
     feature_map_shape = hyper_params['feature_map_shape'] 
@@ -13,7 +14,7 @@ def rpn_target(anchors, gt_boxes, gt_labels, hyper_params):
     pos_threshold = hyper_params["pos_threshold"]
     neg_threshold = hyper_params["neg_threshold"]
 
-    iou_map = bbox_utils.generate_iou(anchors, gt_boxes)
+    iou_map = generate_iou(anchors, gt_boxes)
     #
     max_indices_each_row = tf.argmax(iou_map, axis=2, output_type=tf.int32)
     max_indices_each_column = tf.argmax(iou_map, axis=1, output_type=tf.int32)
@@ -46,7 +47,7 @@ def rpn_target(anchors, gt_boxes, gt_labels, hyper_params):
 
     expanded_gt_boxes = tf.where(tf.expand_dims(pos_mask, -1), gt_boxes_map, tf.zeros_like(gt_boxes_map))
     
-    bbox_deltas = bbox_utils.bbox_to_delta(anchors, expanded_gt_boxes) / variances
+    bbox_deltas = bbox_to_delta(anchors, expanded_gt_boxes) / variances
 
     bbox_deltas = tf.reshape(bbox_deltas, (batch_size, feature_map_shape, feature_map_shape, anchor_count* 4))
     bbox_labels = tf.reshape(bbox_labels, (batch_size, feature_map_shape, feature_map_shape, anchor_count))
@@ -60,7 +61,7 @@ def dtn_target(roi_bboxes, gt_boxes, gt_labels, hyper_params):
         total_neg_bboxes = hyper_params["total_neg_bboxes"]
         variances = hyper_params["variances"]
         #
-        iou_map = bbox_utils.generate_iou(roi_bboxes, gt_boxes)
+        iou_map = generate_iou(roi_bboxes, gt_boxes)
         #
         max_indices_each_gt_box = tf.argmax(iou_map, axis=2, output_type=tf.int32)
         merged_iou_map = tf.reduce_max(iou_map, axis=2)
@@ -80,7 +81,7 @@ def dtn_target(roi_bboxes, gt_boxes, gt_labels, hyper_params):
 
         expanded_gt_labels = pos_gt_labels + neg_gt_labels 
         #
-        roi_deltas = bbox_utils.bbox_to_delta(roi_bboxes, expanded_gt_boxes) / variances
+        roi_deltas = bbox_to_delta(roi_bboxes, expanded_gt_boxes) / variances
         #
         roi_labels = tf.one_hot(expanded_gt_labels, total_labels)
         scatter_indices = tf.tile(tf.expand_dims(roi_labels, -1), (1, 1, 1, 4))
@@ -88,7 +89,7 @@ def dtn_target(roi_bboxes, gt_boxes, gt_labels, hyper_params):
 
         return roi_deltas, roi_labels
 
-#%%
+
 def randomly_select_xyz_mask(mask, select_xyz):
     maxval = tf.reduce_max(select_xyz) * 10
     random_mask = tf.random.uniform(tf.shape(mask), minval=1, maxval=maxval, dtype=tf.int32)

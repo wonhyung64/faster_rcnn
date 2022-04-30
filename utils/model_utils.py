@@ -1,5 +1,3 @@
-#%%
-from msilib.schema import Class
 import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Conv2D, TimeDistributed, Dense, Flatten, Dropout
@@ -7,7 +5,6 @@ from tensorflow.keras.applications.vgg16 import VGG16
 from tensorflow.keras.applications.vgg19 import VGG19
 from typing import Dict, List
 
-#%%
 class RPN(Model):
     def __init__(self, hyper_params: Dict) -> None:
         """
@@ -82,7 +79,6 @@ class RPN(Model):
         return [rpn_reg_output, rpn_cls_output, feature_map]
 
 
-#%%
 class DTN(Model):
     def __init__(self, hyper_params: Dict) -> None:
         """

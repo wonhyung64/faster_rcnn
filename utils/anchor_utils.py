@@ -1,8 +1,6 @@
-#%%
 import tensorflow as tf
 from typing import Dict
 
-#%%
 def generate_anchors(hyper_params: Dict) -> tf.Tensor:
     """
     generate reference anchors on grid

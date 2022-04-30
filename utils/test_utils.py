@@ -1,13 +1,10 @@
-#%%
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
-import bbox_utils
-
 from PIL import Image,ImageDraw
-#%%
-def draw_rpn_output(image, roi_bboxes, roi_scores, top_n, save_dir=None, save_num=None):
+from .bbox_utils import generate_iou
 
+def draw_rpn_output(image, roi_bboxes, roi_scores, top_n, save_dir=None, save_num=None):
     image = tf.squeeze(image, axis=0)
     image = tf.keras.preprocessing.image.array_to_img(image)
     width, height = image.size
@@ -19,11 +16,8 @@ def draw_rpn_output(image, roi_bboxes, roi_scores, top_n, save_dir=None, save_nu
     x2 = roi_bboxes[0][...,3] * width
 
     denormalized_box = tf.round(tf.stack([y1, x1, y2, x2], axis=-1))
-
     _, top_indices = tf.nn.top_k(roi_scores[0], top_n)
-    #
     selected_rpn_bboxes = tf.gather(denormalized_box, top_indices, batch_dims=0)
-    #
     
     for bbox in selected_rpn_bboxes:
         y1, x1, y2, x2 = tf.split(bbox, 4, axis = -1)
@@ -33,15 +27,13 @@ def draw_rpn_output(image, roi_bboxes, roi_scores, top_n, save_dir=None, save_nu
         plt.figure()
         plt.imshow(image)
         plt.savefig(save_dir + '/rpn_output/' + str(save_num) + '.png')
-
     else:
         plt.figure()
         plt.imshow(image)
         plt.show()
-    
-#%%
-def draw_dtn_output(image, final_bboxes, labels, final_labels, final_scores, save_dir=None, save_num=None):
 
+
+def draw_dtn_output(image, final_bboxes, labels, final_labels, final_scores, save_dir=None, save_num=None):
     image = tf.squeeze(image, axis=0)
     image = tf.keras.preprocessing.image.array_to_img(image)
     width, height = image.size
@@ -80,7 +72,7 @@ def draw_dtn_output(image, final_bboxes, labels, final_labels, final_scores, sav
         plt.imshow(image)
         plt.show()
 
-#%%
+
 def calculate_PR(final_bbox, gt_box, mAP_threshold):
     bbox_num = final_bbox.shape[1]
     gt_num = gt_box.shape[1]
@@ -89,7 +81,7 @@ def calculate_PR(final_bbox, gt_box, mAP_threshold):
     for i in range(bbox_num):
         bbox = tf.split(final_bbox, bbox_num, axis=1)[i]
 
-        iou = bbox_utils.generate_iou(bbox, gt_box)
+        iou = generate_iou(bbox, gt_box)
 
         best_iou = tf.reduce_max(iou, axis=1)
         pos_num = tf.cast(tf.greater(best_iou, mAP_threshold), dtype=tf.float32)
@@ -105,17 +97,16 @@ def calculate_PR(final_bbox, gt_box, mAP_threshold):
     
     return precision, recall
 
-#%%
+
 def calculate_AP_per_class(recall, precision):
     interp = tf.constant([i/10 for i in range(0, 11)])
     AP = tf.reduce_max([tf.where(interp <= recall[i], precision[i], 0.) for i in range(len(recall))], axis=0)
     AP = tf.reduce_sum(AP) / 11
     return AP
 
-#%%
-def calculate_AP50(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params):
+
+def calculate_AP_const(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params, mAP_threshold=0.5):
     total_labels = hyper_params["total_labels"]
-    mAP_threshold = hyper_params["mAP_threshold"]
     AP = []
     for c in range(1, total_labels):
         if tf.math.reduce_any(final_labels == c) or tf.math.reduce_any(gt_labels == c):
@@ -130,7 +121,8 @@ def calculate_AP50(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params
     if AP == []: AP = 1.0
     else: AP = tf.reduce_mean(AP)
     return AP
-#%%
+
+
 def calculate_AP(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params):
     total_labels = hyper_params["total_labels"]
     mAP_threshold_lst = np.arange(0.5, 1., 0.05)

@@ -1,8 +1,6 @@
-#%%
 import os
 from typing import Dict
 
-#%%
 def get_hyper_params() -> Dict:
     """
     return hyper parameters dictionary
@@ -34,7 +32,6 @@ def get_hyper_params() -> Dict:
     }
 
     return hyper_params
-
 
 def save_dict_to_file(dict: Dict, dict_dir: str) -> None:
     """

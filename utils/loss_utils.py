@@ -1,8 +1,6 @@
-#%%
 import tensorflow as tf
 from typing import Dict
 
-#%%
 def rpn_reg_loss_fn(
     pred: tf.Tensor, bbox_deltas: tf.Tensor, bbox_labels: tf.Tensor, hyper_params: Dict
 ) -> tf.Tensor:

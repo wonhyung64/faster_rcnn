@@ -1,7 +1,6 @@
-#%%
 import tensorflow as tf
-import bbox_utils
-#%%
+from .bbox_utils import delta_to_bbox
+
 def RoIBBox(rpn_reg_output, rpn_cls_output, anchors, hyper_params, nms_iou_threshold=0.7, test=False):
         pre_nms_topn = hyper_params["pre_nms_topn"]
         post_nms_topn = hyper_params["train_nms_topn"]
@@ -16,7 +15,7 @@ def RoIBBox(rpn_reg_output, rpn_cls_output, anchors, hyper_params, nms_iou_thres
         #
         rpn_reg_output *= variances
         #
-        rpn_bboxes = bbox_utils.delta_to_bbox(anchors, rpn_reg_output)
+        rpn_bboxes = delta_to_bbox(anchors, rpn_reg_output)
 
         _, pre_indices = tf.nn.top_k(rpn_cls_output, pre_nms_topn)
         #
@@ -33,7 +32,8 @@ def RoIBBox(rpn_reg_output, rpn_cls_output, anchors, hyper_params, nms_iou_thres
                                                             iou_threshold=nms_iou_threshold)
         #
         return roi_bboxes, roi_scores
-# %%
+
+
 def RoIAlign(roi_bboxes, feature_map, hyper_params):
     pooling_size = hyper_params["pooling_size"]
     batch_size, total_bboxes = tf.shape(roi_bboxes)[0], tf.shape(roi_bboxes)[1]
@@ -54,7 +54,7 @@ def RoIAlign(roi_bboxes, feature_map, hyper_params):
     #
     return pooled_roi
 
-#%%
+
 def Decode(dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params, max_total_size=200, score_threshold=0.7, iou_threshold=0.5):
     batch_size = tf.shape(dtn_reg_output)[0]
     variances = hyper_params["variances"]
@@ -65,7 +65,7 @@ def Decode(dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params, max_total_s
 
     expanded_roi_bboxes = tf.tile(tf.expand_dims(roi_bboxes, -2), (1, 1, total_labels, 1))
     
-    pred_bboxes = bbox_utils.delta_to_bbox(expanded_roi_bboxes, dtn_reg_output)
+    pred_bboxes = delta_to_bbox(expanded_roi_bboxes, dtn_reg_output)
 
     pred_labels_map = tf.expand_dims(tf.argmax(dtn_cls_output, -1), -1)
     pred_labels = tf.where(tf.not_equal(pred_labels_map, 0), dtn_cls_output, tf.zeros_like(dtn_cls_output))

@@ -1,7 +1,5 @@
-#%%
 import tensorflow as tf
 
-#%%
 def delta_to_bbox(anchors: tf.Tensor, bbox_deltas: tf.Tensor) -> tf.Tensor:
     """
     transform bbox offset to coordinates
@@ -31,7 +29,6 @@ def delta_to_bbox(anchors: tf.Tensor, bbox_deltas: tf.Tensor) -> tf.Tensor:
     return tf.stack([y1, x1, y2, x2], axis=-1)
 
 
-#%%
 def bbox_to_delta(anchors: tf.Tensor, gt_boxes: tf.Tensor) -> tf.Tensor:
     """
     transform bbox coordinates to offset
@@ -79,7 +76,6 @@ def bbox_to_delta(anchors: tf.Tensor, gt_boxes: tf.Tensor) -> tf.Tensor:
     return tf.stack([delta_y, delta_x, delta_h, delta_w], axis=-1)
 
 
-#%%
 def generate_iou(anchors: tf.Tensor, gt_boxes: tf.Tensor) -> tf.Tensor:
     """
     calculate Intersection over Union

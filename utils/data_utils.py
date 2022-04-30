@@ -1,11 +1,9 @@
-# %%
 import os
 import time
 import numpy as np
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
-#%%
 def download_dataset(dataset_name, data_dir):
 
     if dataset_name == "coco17":
@@ -26,7 +24,8 @@ def download_dataset(dataset_name, data_dir):
 
 
     return train, validation, test, labels
-#%%
+
+
 def serialize_example(example, img_size):
     image = example["image"]
     image = tf.image.resize(image, img_size)
@@ -54,7 +53,8 @@ def serialize_example(example, img_size):
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict)) 
 
     return example.SerializeToString()
-#%%
+
+
 def deserialize_example(serialized_string):
     image_feature_description = { 
         'image': tf.io.FixedLenFeature([], tf.string), 
@@ -76,20 +76,20 @@ def deserialize_example(serialized_string):
     bbox = tf.reshape(bbox, bbox_shape)
     return image, bbox, label
 
-# %%
+
 def write_labels(save_dir, labels):
     with open(f"{save_dir}/labels.txt", "w") as f:
         for label in labels:
             f.write(label+",")
 
-#%%
+
 def read_labels(label_dir):
     f = open(f"{label_dir}/labels.txt", "r")
     labels = f.read().split(",")
     del labels[-1]
     return labels
 
-#%%
+
 def fetch_dataset(dataset, split, img_size, data_dir="C:/won", save_dir="D:/won"):
 
     save_dir = save_dir + "/data/" + dataset + "_tfrecord_" + str(img_size[0]) + "_" + str(img_size[1])
