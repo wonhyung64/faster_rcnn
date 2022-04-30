@@ -27,6 +27,18 @@ from utils import(
     calculate_AP_const,
 )
 
+def build_graph(hyper_params):
+    rpn_model = RPN(hyper_params)
+    input_shape = (None, 500, 500, 3)
+    rpn_model.build(input_shape)
+
+    dtn_model = DTN(hyper_params)
+    input_shape = (None, hyper_params['train_nms_topn'], 7, 7, 512)
+    dtn_model.build(input_shape)
+
+    return rpn_model, dtn_model
+
+
 @tf.function
 def train_step1(img, bbox_deltas, bbox_labels, hyper_params):
     with tf.GradientTape(persistent=True) as tape:
@@ -71,7 +83,8 @@ dataset, labels = fetch_dataset(dataset_name, "train", img_size)
 dataset = dataset.map(lambda x, y, z: preprocessing(x, y, z))
 data_shapes = ([None, None, None], [None, None], [None])
 padding_values = (tf.constant(0, tf.float32), tf.constant(0, tf.float32), tf.constant(-1, tf.int32))
-dataset = dataset.shuffle(buffer_size=14000, reshuffle_each_iteration=True)
+tf.random.set_seed(42)
+dataset = dataset.shuffle(buffer_size=14000, seed=42)
 dataset = dataset.repeat().padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values, drop_remainder=True)
 dataset = iter(dataset)
 
@@ -81,23 +94,19 @@ hyper_params["total_labels"] = len(labels)
 anchors = generate_anchors(hyper_params)
 
 #%%
-rpn_model = RPN(hyper_params)
-input_shape = (None, 500, 500, 3)
-rpn_model.build(input_shape)
 
-dtn_model = DTN(hyper_params)
-input_shape = (None, hyper_params['train_nms_topn'], 7, 7, 512)
-dtn_model.build(input_shape)
+rpn_model, dtn_model = build_graph(hyper_params)
 
 boundaries = [100000, 200000, 300000]
 values = [1e-5, 1e-6, 1e-7, 1e-8]
 learning_rate_fn = tf.keras.optimizers.schedules.PiecewiseConstantDecay(boundaries, values)
 
 optimizer1 = tf.keras.optimizers.Adam(learning_rate=learning_rate_fn)
-# optimizer1 = keras.optimizers.Adam(learning_rate=1e-5)
 optimizer2 = tf.keras.optimizers.Adam(learning_rate=learning_rate_fn)
-# optimizer2 = keras.optimizers.Adam(learning_rate=1e-5)
 
+#%%
+if __name__ == "main":
+    
 #%%
 atmp_dir = os.getcwd()
 atmp_dir = generate_save_dir(atmp_dir, hyper_params)
