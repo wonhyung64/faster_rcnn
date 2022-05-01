@@ -1,4 +1,4 @@
-# Faster-R-CNN
+# Faster_R-CNN
 
 #### Reproduction of "Faster R-CNN: Towards Real-Time Object Detection with Region Proposal Networks" by Shaoqing Ren and Kaiming He (NeurIPS 2015) in Tensorflow 2.0.
 
