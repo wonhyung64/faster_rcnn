@@ -2,7 +2,7 @@ from .anchor_utils import (
     generate_anchors,
 )
 
-from .bbox_utils import(
+from .bbox_utils import (
     delta_to_bbox,
     bbox_to_delta,
     generate_iou,
@@ -53,10 +53,13 @@ from .target_utils import(
 )
 
 from .test_utils import(
-    draw_rpn_output,
-    draw_dtn_output,
     calculate_AP,
     calculate_AP_const,
     calculate_AP_per_class,
     calculate_PR,
+)
+
+from .draw_utils import(
+    draw_rpn_output,
+    draw_dtn_output,
 )

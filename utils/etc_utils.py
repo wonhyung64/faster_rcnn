@@ -12,7 +12,7 @@ def get_hyper_params() -> Dict:
         "img_size": 500,
         "feature_map_shape": 31,
         "anchor_ratios": [1.0, 2.0, 1.0 / 2.0],
-        "anchor_scales": [32, 64, 128],
+        "anchor_scales": [64, 128, 256],
         "pre_nms_topn": 6000,
         "train_nms_topn": 1500,
         "test_nms_topn": 300,
@@ -23,12 +23,10 @@ def get_hyper_params() -> Dict:
         "variances": [0.1, 0.1, 0.2, 0.2],
         "pos_threshold": 0.65,
         "neg_threshold": 0.25,
-        "batch_size": 2,
-        "iters": 320000,
-        "attempts": 100,
+        "batch_size": 4,
+        "iters": 10000,
         "base_model": "vgg16",
-        "mAP_threshold": 0.5,
-        "dataset_name": "ship",
+        "dataset_name": "voc07",
     }
 
     return hyper_params
