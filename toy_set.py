@@ -348,11 +348,3 @@ for iteration in range(iterations):
         iteration, iterations, 
         float(rpn_reg_loss), float(rpn_cls_loss), float(frcnn_reg_loss), float(frcnn_cls_loss)
     ))
-
-# %%
-
-# %%
-
-# %%
-
-# %%
