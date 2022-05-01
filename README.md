@@ -2,7 +2,7 @@
 
 #### Reproduction of "Faster R-CNN: Towards Real-Time Object Detection with Region Proposal Networks" by Shaoqing Ren and Kaiming He (NeurIPS 2015) in Tensorflow 2.0.
 
-- Tutorial for code: [Click here !](https://nbviewer.org/gist/wonhyung64/3d26db7ac8af3049222ca3a01cf41c2f)
+- Tutorial code: [Click here !](https://nbviewer.org/gist/wonhyung64/3d26db7ac8af3049222ca3a01cf41c2f)
 - Outputs of Faster R-CNN on Pascal VOC 2007
 
 ![Faster R-CNN on Pascal VOC 2007](https://github.com/wonhyung64/Faster-R-CNN/blob/main/ex/ex_voc07.png "outputs")
