@@ -184,4 +184,3 @@ if __name__ == "__main__":
         }
     run["results"] = result
 
-    run.stop()
