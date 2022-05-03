@@ -2,11 +2,11 @@
 import os
 import time
 import tensorflow as tf
+import tensorflow_datasets as tfds
 import neptune.new as neptune
 from tqdm import tqdm
 from utils import (
     generate_anchors,
-    download_dataset,
     get_hyper_params,
     rpn_reg_loss_fn,
     rpn_cls_loss_fn,
@@ -75,7 +75,7 @@ if __name__ == "__main__":
 
     hyper_params = get_hyper_params()
     hyper_params['anchor_count'] = len(hyper_params['anchor_ratios']) * len(hyper_params['anchor_scales'])
-    iters = hyper_params['iters']
+    epochs = hyper_params['epochs']
     batch_size = hyper_params['batch_size']
     img_size = (hyper_params["img_size"], hyper_params["img_size"])
     dataset_name = hyper_params["dataset_name"]
@@ -84,24 +84,42 @@ if __name__ == "__main__":
     run["sys/name"] = "frcnn-optimization"
     run["sys/tags"].add([dataset_name, str(img_size)])
 
-    tf.random.set_seed(42)
-    train, _, test, labels = download_dataset(dataset_name, "D:/won/data/tfds")
+    train1, dataset_info = tfds.load(name="voc/2007", split="train", data_dir="D:/won/data/tfds", with_info=True)
+    train2, _ = tfds.load(name="voc/2007", split="validation[100:]", data_dir="D:/won/data/tfds", with_info=True)
+    validation, _ = tfds.load(name="voc/2007", split="validation[:100]", data_dir="D:/won/data/tfds", with_info=True)
+    test, _ = tfds.load(name="voc/2007", split="train[:10%]", data_dir="D:/won/data/tfds", with_info=True)
+    train = train1.concatenate(train2)
+
+    data_ck = iter(train)
+    one_epoch = 0
+    while True:
+        try: next(data_ck) 
+        except: break
+        one_epoch += 1
+
+    labels = dataset_info.features["labels"].names
+    labels = ["bg"] + labels
+    hyper_params["total_labels"] = len(labels)
+
     data_shapes = ([None, None, None], [None, None], [None])
     padding_values = (tf.constant(0, tf.float32), tf.constant(0, tf.float32), tf.constant(-1, tf.int32))
 
+    tf.random.set_seed(42)
     train_set = train.map(lambda x, y=img_size, z=False: preprocessing(x, y, z))
-    train_set = train_set.shuffle(buffer_size=14000, seed=42)
+    train_set = train_set.shuffle(buffer_size=one_epoch, seed=42)
     train_set = train_set.repeat().padded_batch(batch_size, padded_shapes=data_shapes, padding_values=padding_values, drop_remainder=True)
     train_set = train_set.prefetch(tf.data.experimental.AUTOTUNE)
     train_set = iter(train_set)
+
+    valid_set = validation.map(lambda x, y=img_size, z=True: preprocessing(x, y, z))
+    valid_set = valid_set.repeat().padded_batch(batch_size=1, padded_shapes=data_shapes, padding_values=padding_values, drop_remainder=True)
+    valid_set = valid_set.prefetch(tf.data.experimental.AUTOTUNE)
+    valid_set = iter(valid_set)
 
     test_set = test.map(lambda x, y=img_size, z=True: preprocessing(x, y, z))
     test_set = test_set.repeat().padded_batch(batch_size=1, padded_shapes=data_shapes, padding_values=padding_values, drop_remainder=True)
     test_set = test_set.prefetch(tf.data.experimental.AUTOTUNE)
     test_set = iter(test_set)
-
-    labels = ["bg"] + labels
-    hyper_params["total_labels"] = len(labels)
 
     anchors = generate_anchors(hyper_params)
 
@@ -115,8 +133,10 @@ if __name__ == "__main__":
     optimizer2 = tf.keras.optimizers.Adam(learning_rate=learning_rate_fn)
 
     step = 0
-    progress_bar = tqdm(range(hyper_params['iters']))
-    progress_bar.set_description('iteration {}/{} | current loss ?'.format(step, hyper_params['iters']))
+    best_mAP = 0
+    iters = round(epochs * one_epoch / batch_size)
+    progress_bar = tqdm(range(iters))
+    progress_bar.set_description('iteration {}/{} | current loss ?'.format(step, iters))
     start_time = time.time()
 
     for _ in progress_bar:
@@ -133,7 +153,7 @@ if __name__ == "__main__":
         step += 1
         
         progress_bar.set_description('iteration {}/{} | rpn_reg {:.4f}, rpn_cls {:.4f}, dtn_reg {:.4f}, dtn_cls {:.4f}, loss {:.4f}'.format(
-            step, hyper_params['iters'], 
+            step, iters, 
             rpn_reg_loss.numpy(), rpn_cls_loss.numpy(), dtn_reg_loss.numpy(), dtn_cls_loss.numpy(), (rpn_reg_loss + rpn_cls_loss + dtn_reg_loss + dtn_cls_loss).numpy()
         )) 
 
@@ -142,18 +162,38 @@ if __name__ == "__main__":
         run["train/loss/dtn_reg_loss"].log(dtn_reg_loss.numpy())
         run["train/loss/dtn_cls_loss"].log(dtn_cls_loss.numpy())
 
-        if step % 1000 == 0 :
-            ckpt_dir = "model_ckpt/rpn_weights"
-            rpn_model.save_weights(f"{ckpt_dir}/weights")
-            ckpt = os.listdir(ckpt_dir)
-            for i in range(len(ckpt)):
-                run[f"{ckpt_dir}/{ckpt[i]}"].upload(f"{ckpt_dir}/{ckpt[i]}")
 
-            ckpt_dir = "model_ckpt/dtn_weights"
-            dtn_model.save_weights(f"{ckpt_dir}/weights")
-            ckpt = os.listdir(ckpt_dir)
-            for i in range(len(ckpt)):
-                run[f"{ckpt_dir}/{ckpt[i]}"].upload(f"{ckpt_dir}/{ckpt[i]}")
+        if step % round(one_epoch / batch_size * 5) == 0 :
+            mAP = []
+            progress_bar = tqdm(range(100))
+
+            for _ in progress_bar:
+                img, gt_boxes, gt_labels = next(test_set)
+                rpn_reg_output, rpn_cls_output, feature_map = rpn_model(img)
+                roi_bboxes, roi_scores = RoIBBox(rpn_reg_output, rpn_cls_output, anchors, hyper_params)
+                pooled_roi = RoIAlign(roi_bboxes, feature_map, hyper_params)
+                dtn_reg_output, dtn_cls_output = dtn_model(pooled_roi)
+                final_bboxes, final_labels, final_scores = Decode(dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params)
+                AP = calculate_AP_const(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params, mAP_threshold=0.7)
+                mAP.append(AP)
+
+            mAP_res = tf.reduce_mean(mAP)
+            run["validation/mAP"].log(mAP_res.numpy())
+
+            if mAP_res.numpy() > best_mAP:
+                best_mAP = mAP_res.numpy()
+
+                ckpt_dir = "model_ckpt/rpn_weights"
+                rpn_model.save_weights(f"{ckpt_dir}/weights")
+                ckpt = os.listdir(ckpt_dir)
+                for i in range(len(ckpt)):
+                    run[f"{ckpt_dir}/{ckpt[i]}"].upload(f"{ckpt_dir}/{ckpt[i]}")
+
+                ckpt_dir = "model_ckpt/dtn_weights"
+                dtn_model.save_weights(f"{ckpt_dir}/weights")
+                ckpt = os.listdir(ckpt_dir)
+                for i in range(len(ckpt)):
+                    run[f"{ckpt_dir}/{ckpt[i]}"].upload(f"{ckpt_dir}/{ckpt[i]}")
 
     train_time = time.time() - start_time
 

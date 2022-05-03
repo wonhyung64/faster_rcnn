@@ -24,7 +24,7 @@ def get_hyper_params() -> Dict:
         "pos_threshold": 0.65,
         "neg_threshold": 0.25,
         "batch_size": 4,
-        "iters": 160000,
+        "epochs": 50,
         "base_model": "vgg16",
         "dataset_name": "voc07",
     }
