@@ -95,25 +95,26 @@ if __name__ == "__main__":
     run["sys/name"] = "frcnn-optimization"
     run["sys/tags"].add([dataset_name, str(img_size)])
 
+    data_dir = hyper_params["data_dir"]
     train1, dataset_info = tfds.load(
-        name="voc/2007", split="train", data_dir="D:/won/data/tfds", with_info=True
+        name="voc/2007", split="train", data_dir=data_dir, with_info=True
     )
     train2, _ = tfds.load(
         name="voc/2007",
         split="validation[100:]",
-        data_dir="D:/won/data/tfds",
+        data_dir=data_dir,
         with_info=True,
     )
     validation, _ = tfds.load(
         name="voc/2007",
         split="validation[:100]",
-        data_dir="D:/won/data/tfds",
+        data_dir=data_dir,
         with_info=True,
     )
     test, _ = tfds.load(
         name="voc/2007",
         split="train[:10%]",
-        data_dir="D:/won/data/tfds",
+        data_dir=data_dir,
         with_info=True,
     )
     train = train1.concatenate(train2)
@@ -182,6 +183,11 @@ if __name__ == "__main__":
 
     optimizer1 = tf.keras.optimizers.Adam(learning_rate=learning_rate_fn)
     optimizer2 = tf.keras.optimizers.Adam(learning_rate=learning_rate_fn)
+
+    if not (os.path.exists("model_ckpt")):
+        os.mkdir("model_ckpt")
+        os.mkdir("model_ckpt/rpn_weights")
+        os.mkdir("model_ckpt/dtn_weights")
 
     step = 0
     best_mAP = 0
@@ -266,24 +272,27 @@ if __name__ == "__main__":
 
             if mAP_res.numpy() > best_mAP:
                 best_mAP = mAP_res.numpy()
-
-                ckpt_dir = "model_ckpt/rpn_weights"
+                ckpt_dir = f"model_ckpt/rpn_weights"
                 rpn_model.save_weights(f"{ckpt_dir}/weights")
                 ckpt = os.listdir(ckpt_dir)
                 for i in range(len(ckpt)):
                     run[f"{ckpt_dir}/{ckpt[i]}"].upload(f"{ckpt_dir}/{ckpt[i]}")
 
-                ckpt_dir = "model_ckpt/dtn_weights"
-                dtn_model.save_weights(f"{ckpt_dir}/weights")
+                ckpt_dir = f"model_ckpt/dtn_weights"
+                rpn_model.save_weights(f"{ckpt_dir}/weights")
                 ckpt = os.listdir(ckpt_dir)
                 for i in range(len(ckpt)):
                     run[f"{ckpt_dir}/{ckpt[i]}"].upload(f"{ckpt_dir}/{ckpt[i]}")
 
     train_time = time.time() - start_time
 
+    rpn_model.load_weights("model_ckpt/rpn_weights/weights")
+    dtn_model.load_weights("model_ckpt/dtn_weights/weights")
+
     total_time = []
     mAP = []
     progress_test = tqdm(range(20))
+
     for _ in progress_test:
         img, gt_boxes, gt_labels = next(test_set)
         start_time = time.time()

@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 from typing import Tuple
 
+
 def preprocessing(dataset: tf.data.Dataset, img_size, eval: bool = False) -> Tuple:
     """
     preprocess tensors with augmentations
@@ -13,7 +14,7 @@ def preprocessing(dataset: tf.data.Dataset, img_size, eval: bool = False) -> Tup
     Returns:
         Tuple: tuple of preprocessed tensors
     """
-    image = dataset["image"]/255
+    image = dataset["image"] / 255
     image = tf.image.resize(image, img_size)
     bbox = dataset["objects"]["bbox"]
     label = dataset["objects"]["label"]

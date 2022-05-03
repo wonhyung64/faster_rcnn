@@ -5,6 +5,7 @@ from tensorflow.keras.applications.vgg16 import VGG16
 from tensorflow.keras.applications.vgg19 import VGG19
 from typing import Dict, List
 
+
 class RPN(Model):
     def __init__(self, hyper_params: Dict) -> None:
         """
