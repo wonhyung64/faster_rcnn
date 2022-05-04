@@ -104,22 +104,25 @@ if __name__ == "__main__":
 
     data_dir = hyper_params["data_dir"]
     train1, dataset_info = tfds.load(
-        name="voc/2007", split="train", data_dir=data_dir, with_info=True
+        name=dataset_name,
+        split="train",
+        data_dir=data_dir,
+        with_info=True
     )
     train2, _ = tfds.load(
-        name="voc/2007",
+        name=dataset_name,
         split="validation[100:]",
         data_dir=data_dir,
         with_info=True,
     )
     validation, _ = tfds.load(
-        name="voc/2007",
+        name=dataset_name,
         split="validation[:100]",
         data_dir=data_dir,
         with_info=True,
     )
     test, _ = tfds.load(
-        name="voc/2007",
+        name=dataset_name,
         split="train[:10%]",
         data_dir=data_dir,
         with_info=True,
@@ -135,7 +138,9 @@ if __name__ == "__main__":
             break
         one_epoch += 1
 
-    labels = dataset_info.features["labels"].names
+    try: labels = dataset_info.features["labels"].names
+    except: labels = dataset_info.features["objects"]["label"].names
+
     labels = ["bg"] + labels
     hyper_params["total_labels"] = len(labels)
 
