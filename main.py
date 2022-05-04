@@ -7,7 +7,9 @@ from tqdm import tqdm
 
 try: import neptune.new as neptune
 except:
-    !pip install neptune-client
+    import sys
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "neptune-client"])
     import neptune.new as neptune
 
 from utils import (
