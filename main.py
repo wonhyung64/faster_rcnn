@@ -196,10 +196,9 @@ if __name__ == "__main__":
     optimizer1 = tf.keras.optimizers.Adam(learning_rate=learning_rate_fn)
     optimizer2 = tf.keras.optimizers.Adam(learning_rate=learning_rate_fn)
 
-    if not (os.path.exists("model_ckpt")):
-        os.mkdir("model_ckpt")
-        os.mkdir("model_ckpt/rpn_weights")
-        os.mkdir("model_ckpt/dtn_weights")
+    if not (os.path.exists(f"model_ckpt/{dataset_name}")):
+        os.makedirs(f"model_ckpt/{dataset_name}/rpn_weights")
+        os.makedirr(f"model_ckpt/{dataset_name}/dtn_weights")
 
     step = 0
     best_mAP = 0
@@ -284,13 +283,13 @@ if __name__ == "__main__":
 
             if mAP_res.numpy() > best_mAP:
                 best_mAP = mAP_res.numpy()
-                ckpt_dir = f"model_ckpt/rpn_weights"
+                ckpt_dir = f"model_ckpt/{dataset_name}/rpn_weights"
                 rpn_model.save_weights(f"{ckpt_dir}/weights")
                 ckpt = os.listdir(ckpt_dir)
                 for i in range(len(ckpt)):
                     run[f"{ckpt_dir}/{ckpt[i]}"].upload(f"{ckpt_dir}/{ckpt[i]}")
 
-                ckpt_dir = f"model_ckpt/dtn_weights"
+                ckpt_dir = f"model_ckpt/{dataset_name}/dtn_weights"
                 rpn_model.save_weights(f"{ckpt_dir}/weights")
                 ckpt = os.listdir(ckpt_dir)
                 for i in range(len(ckpt)):
@@ -298,8 +297,8 @@ if __name__ == "__main__":
 
     train_time = time.time() - start_time
 
-    rpn_model.load_weights("model_ckpt/rpn_weights/weights")
-    dtn_model.load_weights("model_ckpt/dtn_weights/weights")
+    rpn_model.load_weights(f"model_ckpt/{dataset_name}/rpn_weights/weights")
+    dtn_model.load_weights(f"model_ckpt/{dataset_name}/dtn_weights/weights")
 
     total_time = []
     mAP = []
