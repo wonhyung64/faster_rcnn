@@ -3,8 +3,13 @@ import os
 import time
 import tensorflow as tf
 import tensorflow_datasets as tfds
-import neptune.new as neptune
 from tqdm import tqdm
+
+try: import neptune.new as neptune
+except:
+    !pip install neptune-client
+    import neptune.new as neptune
+
 from utils import (
     generate_anchors,
     get_hyper_params,

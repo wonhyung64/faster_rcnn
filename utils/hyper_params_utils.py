@@ -28,7 +28,8 @@ def get_hyper_params() -> Dict:
         "epochs": 100,
         "base_model": "vgg16",
         "dataset_name": "voc07",
-        "data_dir": "D:/won/data/tfds",
+        # "data_dir": "D:/won/data/tfds",
+        "data_dir": "/home1/wonhyung64/data/tfds",
     }
 
     return hyper_params
