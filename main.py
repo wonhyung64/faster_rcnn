@@ -198,7 +198,7 @@ if __name__ == "__main__":
 
     if not (os.path.exists(f"model_ckpt/{dataset_name}")):
         os.makedirs(f"model_ckpt/{dataset_name}/rpn_weights")
-        os.makedirr(f"model_ckpt/{dataset_name}/dtn_weights")
+        os.makedirs(f"model_ckpt/{dataset_name}/dtn_weights")
 
     step = 0
     best_mAP = 0
