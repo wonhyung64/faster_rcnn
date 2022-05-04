@@ -11,3 +11,5 @@ __pycache__/
 .DS_Store
 /model_ckpt
 /.neptune
+/run_frcnn_slurm.sh
+/SLURM*
