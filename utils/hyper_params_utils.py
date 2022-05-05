@@ -25,9 +25,9 @@ def get_hyper_params() -> Dict:
         "pos_threshold": 0.65,
         "neg_threshold": 0.25,
         "batch_size": 4,
-        "epochs": 100,
+        "epochs": 150,
         "base_model": "vgg16",
-        "dataset_name": "coco/2017",
+        "dataset_name": "voc/2007",
         # "data_dir": "D:/won/data/tfds",
         "data_dir": "/home1/wonhyung64/data/tfds",
     }

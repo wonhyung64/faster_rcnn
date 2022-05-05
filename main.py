@@ -274,7 +274,7 @@ if __name__ == "__main__":
                     gt_boxes,
                     gt_labels,
                     hyper_params,
-                    mAP_threshold=0.7,
+                    mAP_threshold=0.95,
                 )
                 mAP.append(AP)
 
@@ -302,8 +302,9 @@ if __name__ == "__main__":
 
     total_time = []
     mAP = []
-    progress_test = tqdm(range(20))
+    progress_test = tqdm(range(1000))
 
+    step = 0
     for _ in progress_test:
         img, gt_boxes, gt_labels = next(test_set)
         start_time = time.time()
@@ -317,24 +318,27 @@ if __name__ == "__main__":
             dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params
         )
         test_time = float(time.time() - start_time) * 1000
-        AP = calculate_AP_const(
+        AP = calculate_AP(
             final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params
         )
         total_time.append(test_time)
         mAP.append(AP)
-        run["outputs/rpn"].log(
-            neptune.types.File.as_image(draw_rpn_output(img, roi_bboxes, roi_scores, 5))
-        )
-        run["outputs/dtn"].log(
-            neptune.types.File.as_image(
-                draw_dtn_output(img, final_bboxes, labels, final_labels, final_scores)
+        if step // 50 == 0:
+            run["outputs/rpn"].log(
+                neptune.types.File.as_image(draw_rpn_output(img, roi_bboxes, roi_scores, 5))
             )
-        )
+            run["outputs/dtn"].log(
+                neptune.types.File.as_image(
+                    draw_dtn_output(img, final_bboxes, labels, final_labels, final_scores)
+                )
+            )
+        step += 1
 
     mAP_res = "%.3f" % (tf.reduce_mean(mAP))
     total_time_res = "%.2fms" % (tf.reduce_mean(total_time))
     result = {
         "mAP": mAP_res,
+        "train_set_num": one_epoch,
         "train_time": train_time,
         "inference_time": total_time_res,
     }
