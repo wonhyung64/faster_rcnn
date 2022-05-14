@@ -1,41 +1,32 @@
 #%%
-! pip install neptune-client
 import neptune.new as neptune
+import os
+import subprocess
 
 #%%
-run = neptune.init(project="model-frcnn", 
-                   api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIwZTNlODVlMi0xMzIyLTQwYzQtYmNkYy1kNWYyZmM1MGFiMjcifQ==")
-#%%
+token = "eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIwZTNlODVlMi0xMzIyLTQwYzQtYmNkYy1kNWYyZmM1MGFiMjcifQ=="
+project = "wonhyung64/frcnn-model"
+os.environ["NEPTUNE_API_TOKEN"] = token
+
+run = neptune.init(project=project, 
+                    api_token=token,
+                   mode="offline")
+
+
 params = {"learning_rate": 0.1}
 
-# log params
 run["parameters"] = params
-
-# log name and append tags
 run["sys/name"] = "basic-colab-example"
 run["sys/tags"].add(["colab", "intro"])
 
-# log loss during training
 for epoch in range(100):
     run["train/loss"].log(0.99 ** epoch)
 
-# log train and validation scores
 run["train/accuracy"] = 0.95
 run["valid/accuracy"] = 0.93
 
-params = {"learning_rate": 0.09}
-
-# log params
-run["parameters"] = params
-
-# log name and append tags
-run["sys/name"] = "example2"
-run["sys/tags"].add(["hello", "world"])
-
-# log loss during training
-for epoch in range(100):
-    run["train/loss"].log(0.5 ** epoch)
-
-# log train and validation scores
-run["train/accuracy"] = 0.8
-run["valid/accuracy"] = 0.4
+# %%
+tmp = os.listdir(".neptune/offline")[0]
+cmd = f"neptune sync -p {project} --run offline/{tmp}"
+subprocess.check_output(cmd, shell = True)
+# %%
