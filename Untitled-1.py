@@ -12,7 +12,6 @@ run = neptune.init(project=project,
                     api_token=token,
                    mode="offline")
 
-
 params = {"learning_rate": 0.1}
 
 run["parameters"] = params
@@ -29,4 +28,5 @@ run["valid/accuracy"] = 0.93
 tmp = os.listdir(".neptune/offline")[0]
 cmd = f"neptune sync -p {project} --run offline/{tmp}"
 subprocess.check_output(cmd, shell = True)
+
 # %%
