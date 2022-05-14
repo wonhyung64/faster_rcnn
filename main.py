@@ -1,16 +1,12 @@
 #%%
 import os
 import time
+import argparse
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from tqdm import tqdm
-
-try: import neptune.new as neptune
-except:
-    import sys
-    import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "neptune-client"])
-    import neptune.new as neptune
+from typing import Dict
+from utils.variable import NEPTUNE_API_KEY, GITHUB_TOKEN
 
 from utils import (
     generate_anchors,
@@ -32,6 +28,43 @@ from utils import (
     calculate_AP,
     calculate_AP_const,
 )
+
+try: import neptune.new as neptune
+except:
+    import sys
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "neptune-client"])
+    import neptune.new as neptune
+
+try: from github import Github
+except:
+    import sys
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "PyGithub"])
+    from github import Github
+
+
+def get_github_repo(access_token, repository_name):
+    """
+    github repo object를 얻는 함수
+    :param access_token: Github access token
+    :param repository_name: repo 이름
+    :return: repo object
+    """
+    g = Github(access_token)
+    repo = g.get_user().get_repo(repository_name)
+    return repo
+
+
+def upload_github_issue(repo, title, body):
+    """
+    해당 repo에 title 이름으로 issue를 생성하고, 내용을 body로 채우는 함수
+    :param repo: repo 이름
+    :param title: issue title
+    :param body: issue body
+    :return: None
+    """
+    repo.create_issue(title=title, body=body)
 
 
 def build_graph(hyper_params):
@@ -82,20 +115,31 @@ def train_step2(pooled_roi, roi_deltas, roi_labels):
     return dtn_reg_loss, dtn_cls_loss
 
 
-#%%
-if __name__ == "__main__":
+def one_experiment(hyper_params: Dict):
+    """
+    one_experiment
+    Args:
+        hyper_params (Dict)
+
+    """
     run = neptune.init(
         project="wonhyung64/model-frcnn",
-        api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIwZTNlODVlMi0xMzIyLTQwYzQtYmNkYy1kNWYyZmM1MGFiMjcifQ==",
+        api_token=NEPTUNE_API_KEY,
     )
 
-    hyper_params = get_hyper_params()
+    try:
+        experiment_id = run.fetch()["sys"]["id"]
+        neptune_url = f"https://app.neptune.ai/wonhyung64/model-frcnn/e/{experiment_id}/all"
+    except:
+        neptune_url = "https://app.neptune.ai/wonhyung64/model-frcnn/experiments?split=tbl&dash=charts&viewId=standard-view"
+
     hyper_params["anchor_count"] = len(hyper_params["anchor_ratios"]) * len(
         hyper_params["anchor_scales"]
     )
     epochs = hyper_params["epochs"]
     batch_size = hyper_params["batch_size"]
     img_size = (hyper_params["img_size"], hyper_params["img_size"])
+    base_model = hyper_params["base_model"]
     dataset_name = hyper_params["dataset_name"]
 
     run["hyper_params"] = hyper_params
@@ -103,6 +147,7 @@ if __name__ == "__main__":
     run["sys/tags"].add([dataset_name, str(img_size)])
 
     data_dir = hyper_params["data_dir"]
+
     train1, dataset_info = tfds.load(
         name=dataset_name,
         split="train",
@@ -268,13 +313,12 @@ if __name__ == "__main__":
                 final_bboxes, final_labels, final_scores = Decode(
                     dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params
                 )
-                AP = calculate_AP_const(
+                AP = calculate_AP(
                     final_bboxes,
                     final_labels,
                     gt_boxes,
                     gt_labels,
                     hyper_params,
-                    mAP_threshold=0.95,
                 )
                 mAP.append(AP)
 
@@ -318,7 +362,7 @@ if __name__ == "__main__":
             dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params
         )
         test_time = float(time.time() - start_time) * 1000
-        AP = calculate_AP(
+        AP = calculate_AP_const(
             final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params
         )
         total_time.append(test_time)
@@ -342,4 +386,33 @@ if __name__ == "__main__":
         "train_time": train_time,
         "inference_time": total_time_res,
     }
+    
     run["results"] = result
+    repository_name = "Faster_R-CNN"
+    title = f"experiment_tracking : {experiment_id}"
+    body = f"""
+mAP: {mAP_res},
+train_set_num: {one_epoch},
+train_time: {train_time},
+inference_time: {total_time_res},
+dataset_name: {dataset_name},
+base_model: {base_model},
+url: {neptune_url}
+    """
+    repo = get_github_repo(GITHUB_TOKEN, repository_name)
+    upload_github_issue(repo, title, body)
+
+
+
+#%%
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base-model", type = str)
+    parser.add_argument("--dataset-name", type = str)
+    
+    args = parser.parse_args()
+    print(args.base_model)
+    print(args.dataset_name)
+    hyper_params_dict = get_hyper_params()
+    one_experiment(hyper_params_dict[f"{args.base_model}_{args.dataset_name}"])
