@@ -122,9 +122,11 @@ def one_experiment(hyper_params: Dict):
         hyper_params (Dict)
 
     """
+    os.environ["NEPTUNE_API_TOKEN"] = NEPTUNE_API_KEY
     run = neptune.init(
         project="wonhyung64/model-frcnn",
         api_token=NEPTUNE_API_KEY,
+        mode="offline"
     )
 
     try:
@@ -388,6 +390,11 @@ def one_experiment(hyper_params: Dict):
     }
     
     run["results"] = result
+    log_dir = os.listdir(".neptune/offline")[0]
+    cmd = f"neptune sync -p wonhyung64/model-frcnn --run offline/{log_dir}"
+    subprocess.check_output(cmd, shell = True)
+
+
     repository_name = "Faster_R-CNN"
     title = f"experiment_tracking : {experiment_id}"
     body = f"""
