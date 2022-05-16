@@ -12,4 +12,4 @@ __pycache__/
 /model_ckpt
 /.neptune
 /run_frcnn_slurm*
-/SLURM*
+SLURM*
