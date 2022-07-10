@@ -3,7 +3,7 @@ from typing import Dict
 
 
 def rpn_reg_loss_fn(
-    pred: tf.Tensor, bbox_deltas: tf.Tensor, bbox_labels: tf.Tensor, hyper_params: Dict
+    pred: tf.Tensor, bbox_deltas: tf.Tensor, bbox_labels: tf.Tensor, args
 ) -> tf.Tensor:
     """
     calculate Region Proposal Regression loss
@@ -19,32 +19,16 @@ def rpn_reg_loss_fn(
     """
     pred = tf.reshape(
         pred,
-        (
-            hyper_params["batch_size"],
-            hyper_params["feature_map_shape"],
-            hyper_params["feature_map_shape"],
-            hyper_params["anchor_count"],
-            4,
-        ),
-    )
+        [args.batch_size] + args.feature_map_shape + [len(args.anchor_ratios) * len(args.anchor_scales), 4]
+        )
     bbox_deltas = tf.reshape(
         bbox_deltas,
-        (
-            hyper_params["batch_size"],
-            hyper_params["feature_map_shape"],
-            hyper_params["feature_map_shape"],
-            hyper_params["anchor_count"],
-            4,
-        ),
-    )
+        [args.batch_size] + args.feature_map_shape + [len(args.anchor_ratios) * len(args.anchor_scales), 4]
+        )
 
-    total_anchors_loc = (
-        hyper_params["feature_map_shape"] * hyper_params["feature_map_shape"]
-    )
+    total_anchors_loc = args.feature_map_shape[0] * args.feature_map_shape[1]
 
-    tune_param = total_anchors_loc / (
-        hyper_params["total_pos_bboxes"] + hyper_params["total_neg_bboxes"]
-    )
+    tune_param = total_anchors_loc / (args.total_pos_bboxes + args.total_neg_bboxes)
 
     loss_fn = tf.losses.Huber(reduction=tf.losses.Reduction.NONE)
 
@@ -63,7 +47,8 @@ def dtn_reg_loss_fn(
     pred: tf.Tensor,
     frcnn_reg_actuals: tf.Tensor,
     frcnn_cls_actuals: tf.Tensor,
-    hyper_params: Dict,
+    args,
+    total_labels
 ) -> tf.Tensor:
     """
     calculate Detection Network Regression loss
@@ -79,23 +64,13 @@ def dtn_reg_loss_fn(
     """
     pred = tf.reshape(
         pred,
-        (
-            hyper_params["batch_size"],
-            hyper_params["train_nms_topn"],
-            hyper_params["total_labels"],
-            4,
-        ),
-    )
+        [args.batch_size, args.train_nms_topn, total_labels, 4]
+        )
 
     frcnn_reg_actuals = tf.reshape(
         frcnn_reg_actuals,
-        (
-            hyper_params["batch_size"],
-            hyper_params["train_nms_topn"],
-            hyper_params["total_labels"],
-            4,
-        ),
-    )
+        [args.batch_size, args.train_nms_topn, total_labels, 4]
+        )
 
     loss_fn = tf.losses.Huber(reduction=tf.losses.Reduction.NONE)
 

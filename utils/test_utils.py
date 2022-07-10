@@ -3,7 +3,7 @@ import tensorflow as tf
 from .bbox_utils import generate_iou
 
 
-def calculate_PR(final_bbox, gt_box, mAP_threshold):
+def calculate_pr(final_bbox, gt_box, mAP_threshold):
     bbox_num = final_bbox.shape[1]
     gt_num = gt_box.shape[1]
 
@@ -30,7 +30,7 @@ def calculate_PR(final_bbox, gt_box, mAP_threshold):
     return precision, recall
 
 
-def calculate_AP_per_class(recall, precision):
+def calculate_ap_per_class(recall, precision):
     interp = tf.constant([i / 10 for i in range(0, 11)])
     AP = tf.reduce_max(
         [tf.where(interp <= recall[i], precision[i], 0.0) for i in range(len(recall))],
@@ -40,7 +40,7 @@ def calculate_AP_per_class(recall, precision):
     return AP
 
 
-def calculate_AP_const(
+def calculate_ap_const(
     final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params, mAP_threshold=0.5
 ):
     total_labels = hyper_params["total_labels"]
@@ -53,8 +53,8 @@ def calculate_AP_const(
             if final_bbox.shape[1] == 0 or gt_box.shape[1] == 0:
                 ap = tf.constant(0.0)
             else:
-                precision, recall = calculate_PR(final_bbox, gt_box, mAP_threshold)
-                ap = calculate_AP_per_class(recall, precision)
+                precision, recall = calculate_pr(final_bbox, gt_box, mAP_threshold)
+                ap = calculate_ap_per_class(recall, precision)
             AP.append(ap)
     if AP == []:
         AP = 1.0
@@ -63,7 +63,7 @@ def calculate_AP_const(
     return AP
 
 
-def calculate_AP(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params):
+def calculate_ap(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params):
     total_labels = hyper_params["total_labels"]
     mAP_threshold_lst = np.arange(0.5, 1.0, 0.05)
     APs = []
@@ -79,8 +79,8 @@ def calculate_AP(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params):
                 if final_bbox.shape[1] == 0 or gt_box.shape[1] == 0:
                     ap = tf.constant(0.0)
                 else:
-                    precision, recall = calculate_PR(final_bbox, gt_box, mAP_threshold)
-                    ap = calculate_AP_per_class(recall, precision)
+                    precision, recall = calculate_pr(final_bbox, gt_box, mAP_threshold)
+                    ap = calculate_ap_per_class(recall, precision)
                 AP.append(ap)
         if AP == []:
             AP = 1.0

@@ -5,15 +5,15 @@ from .bbox_utils import (
 )
 
 
-def rpn_target(anchors, gt_boxes, gt_labels, hyper_params):
-    batch_size = hyper_params["batch_size"]
-    feature_map_shape = hyper_params["feature_map_shape"]
-    anchor_count = hyper_params["anchor_count"]
-    total_pos_bboxes = hyper_params["total_pos_bboxes"]
-    total_neg_bboxes = hyper_params["total_neg_bboxes"]
-    variances = hyper_params["variances"]
-    pos_threshold = hyper_params["pos_threshold"]
-    neg_threshold = hyper_params["neg_threshold"]
+def build_rpn_target(anchors, gt_boxes, gt_labels, args):
+    batch_size = args.batch_size
+    feature_map_shape = args.feature_map_shape
+    anchor_count = len(args.anchor_scales) * len(args.anchor_count)
+    total_pos_bboxes = args.total_pos_bboxes
+    total_neg_bboxes = args.total_neg_bboxes
+    variances = args.variances
+    pos_threshold = args.pos_threshold
+    neg_threshold = args.neg_threshold
 
     iou_map = generate_iou(anchors, gt_boxes)
 
@@ -76,11 +76,10 @@ def rpn_target(anchors, gt_boxes, gt_labels, hyper_params):
 
 
 #%%
-def dtn_target(roi_bboxes, gt_boxes, gt_labels, hyper_params):
-    total_labels = hyper_params["total_labels"]
-    total_pos_bboxes = hyper_params["total_pos_bboxes"]
-    total_neg_bboxes = hyper_params["total_neg_bboxes"]
-    variances = hyper_params["variances"]
+def build_dtn_target(roi_bboxes, gt_boxes, gt_labels, total_labels, args):
+    total_pos_bboxes = args.total_pos_bboxes
+    total_neg_bboxes = args.total_neg_bboxes
+    variances = args.variances
 
     iou_map = generate_iou(roi_bboxes, gt_boxes)
 
@@ -116,7 +115,7 @@ def dtn_target(roi_bboxes, gt_boxes, gt_labels, hyper_params):
     scatter_indices = tf.tile(tf.expand_dims(roi_labels, -1), (1, 1, 1, 4))
     roi_deltas = scatter_indices * tf.expand_dims(roi_deltas, -2)
 
-    return roi_deltas, roi_labels
+    return (roi_deltas, roi_labels)
 
 
 def randomly_select_xyz_mask(mask, select_xyz):
