@@ -170,11 +170,3 @@ if __name__ == "__main__":
     rpn_model.load_weights(f"{weights_dir}_rpn.h5")
     dtn_model.load_weights(f"{weights_dir}_dtn.h5")
 
-    parser.add_argument("--base-model", type = str)
-    parser.add_argument("--dataset-name", type = str)
-    
-    args = parser.parse_args()
-    print(args.base_model)
-    print(args.dataset_name)
-    hyper_params_dict = get_hyper_params()
-    one_experiment(hyper_params_dict[f"{args.base_model}_{args.dataset_name}"])
