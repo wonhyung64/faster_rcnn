@@ -3,418 +3,173 @@ import os
 import time
 import argparse
 import tensorflow as tf
-import tensorflow_datasets as tfds
+import neptune.new as neptune
 from tqdm import tqdm
 from typing import Dict
-from utils.variable import NEPTUNE_API_KEY, GITHUB_TOKEN
 
 from utils import (
-    generate_anchors,
-    get_hyper_params,
-    rpn_reg_loss_fn,
-    rpn_cls_loss_fn,
-    dtn_reg_loss_fn,
-    dtn_cls_loss_fn,
-    RPN,
-    DTN,
+    build_args,
     RoIBBox,
     RoIAlign,
     Decode,
-    preprocessing,
-    rpn_target,
-    dtn_target,
     draw_rpn_output,
     draw_dtn_output,
-    calculate_AP,
-    calculate_AP_const,
+    calculate_ap,
+    calculate_ap_const,
+    plugin_neptune,
+    NEPTUNE_API_KEY,
+    NEPTUNE_PROJECT,
+    load_dataset,
+    build_dataset,
+    build_anchors,
+    build_models,
+    build_optimizer,
+    build_rpn_target,
+    build_dtn_target,
+    forward_backward_rpn,
+    forward_backward_dtn,
+    record_train_loss,
 )
 
-try: import neptune.new as neptune
-except:
-    import sys
-    import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "neptune-client"])
-    import neptune.new as neptune
-
-try: from github import Github
-except:
-    import sys
-    import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "PyGithub"])
-    from github import Github
-
-
-def get_github_repo(access_token, repository_name):
-    """
-    github repo object를 얻는 함수
-    :param access_token: Github access token
-    :param repository_name: repo 이름
-    :return: repo object
-    """
-    g = Github(access_token)
-    repo = g.get_user().get_repo(repository_name)
-    return repo
-
-
-def upload_github_issue(repo, title, body):
-    """
-    해당 repo에 title 이름으로 issue를 생성하고, 내용을 body로 채우는 함수
-    :param repo: repo 이름
-    :param title: issue title
-    :param body: issue body
-    :return: None
-    """
-    repo.create_issue(title=title, body=body)
-
-
-def build_graph(hyper_params):
-    rpn_model = RPN(hyper_params)
-    input_shape = (None, 500, 500, 3)
-    rpn_model.build(input_shape)
-
-    dtn_model = DTN(hyper_params)
-    input_shape = (None, hyper_params["train_nms_topn"], 7, 7, 512)
-    dtn_model.build(input_shape)
-
-    return rpn_model, dtn_model
-
-
-@tf.function
-def train_step1(img, bbox_deltas, bbox_labels, hyper_params):
-    with tf.GradientTape(persistent=True) as tape:
-        """RPN"""
-        rpn_reg_output, rpn_cls_output, feature_map = rpn_model(img)
-
-        rpn_reg_loss = rpn_reg_loss_fn(
-            rpn_reg_output, bbox_deltas, bbox_labels, hyper_params
-        )
-        rpn_cls_loss = rpn_cls_loss_fn(rpn_cls_output, bbox_labels)
-        rpn_loss = rpn_reg_loss + rpn_cls_loss
-
-    grads_rpn = tape.gradient(rpn_loss, rpn_model.trainable_weights)
-    optimizer1.apply_gradients(zip(grads_rpn, rpn_model.trainable_weights))
-
-    return rpn_reg_loss, rpn_cls_loss, rpn_reg_output, rpn_cls_output, feature_map
-
-
-@tf.function
-def train_step2(pooled_roi, roi_deltas, roi_labels):
-    with tf.GradientTape(persistent=True) as tape:
-        """DTN"""
-        dtn_reg_output, dtn_cls_output = dtn_model(pooled_roi, training=True)
-
-        dtn_reg_loss = dtn_reg_loss_fn(
-            dtn_reg_output, roi_deltas, roi_labels, hyper_params
-        )
-        dtn_cls_loss = dtn_cls_loss_fn(dtn_cls_output, roi_labels)
-        dtn_loss = dtn_reg_loss + dtn_cls_loss
-
-    grads_dtn = tape.gradient(dtn_loss, dtn_model.trainable_weights)
-    optimizer2.apply_gradients(zip(grads_dtn, dtn_model.trainable_weights))
-
-    return dtn_reg_loss, dtn_cls_loss
-
-
-def one_experiment(hyper_params: Dict):
-    """
-    one_experiment
-    Args:
-        hyper_params (Dict)
-
-    """
-    os.environ["NEPTUNE_API_TOKEN"] = NEPTUNE_API_KEY
-    run = neptune.init(
-        project="wonhyung64/model-frcnn",
-        api_token=NEPTUNE_API_KEY,
-        mode="offline"
-    )
-
-    try:
-        experiment_id = run.fetch()["sys"]["id"]
-        neptune_url = f"https://app.neptune.ai/wonhyung64/model-frcnn/e/{experiment_id}/all"
-    except:
-        neptune_url = "https://app.neptune.ai/wonhyung64/model-frcnn/experiments?split=tbl&dash=charts&viewId=standard-view"
-
-    hyper_params["anchor_count"] = len(hyper_params["anchor_ratios"]) * len(
-        hyper_params["anchor_scales"]
-    )
-    epochs = hyper_params["epochs"]
-    batch_size = hyper_params["batch_size"]
-    img_size = (hyper_params["img_size"], hyper_params["img_size"])
-    base_model = hyper_params["base_model"]
-    dataset_name = hyper_params["dataset_name"]
-
-    run["hyper_params"] = hyper_params
-    run["sys/name"] = "frcnn-optimization"
-    run["sys/tags"].add([dataset_name, str(img_size)])
-
-    data_dir = hyper_params["data_dir"]
-
-    train1, dataset_info = tfds.load(
-        name=dataset_name,
-        split="train",
-        data_dir=data_dir,
-        with_info=True
-    )
-    train2, _ = tfds.load(
-        name=dataset_name,
-        split="validation[100:]",
-        data_dir=data_dir,
-        with_info=True,
-    )
-    validation, _ = tfds.load(
-        name=dataset_name,
-        split="validation[:100]",
-        data_dir=data_dir,
-        with_info=True,
-    )
-    test, _ = tfds.load(
-        name=dataset_name,
-        split="train[:10%]",
-        data_dir=data_dir,
-        with_info=True,
-    )
-    train = train1.concatenate(train2)
-
-    data_ck = iter(train)
-    one_epoch = 0
-    while True:
-        try:
-            next(data_ck)
-        except:
-            break
-        one_epoch += 1
-
-    try: labels = dataset_info.features["labels"].names
-    except: labels = dataset_info.features["objects"]["label"].names
-
-    labels = ["bg"] + labels
-    hyper_params["total_labels"] = len(labels)
-
-    data_shapes = ([None, None, None], [None, None], [None])
-    padding_values = (
-        tf.constant(0, tf.float32),
-        tf.constant(0, tf.float32),
-        tf.constant(-1, tf.int32),
-    )
-
-    tf.random.set_seed(42)
-    train_set = train.map(lambda x, y=img_size, z=False: preprocessing(x, y, z))
-    train_set = train_set.shuffle(buffer_size=one_epoch, seed=42)
-    train_set = train_set.repeat().padded_batch(
-        batch_size,
-        padded_shapes=data_shapes,
-        padding_values=padding_values,
-        drop_remainder=True,
-    )
-    train_set = train_set.prefetch(tf.data.experimental.AUTOTUNE)
-    train_set = iter(train_set)
-
-    valid_set = validation.map(lambda x, y=img_size, z=True: preprocessing(x, y, z))
-    valid_set = valid_set.repeat().padded_batch(
-        batch_size=1,
-        padded_shapes=data_shapes,
-        padding_values=padding_values,
-        drop_remainder=True,
-    )
-    valid_set = valid_set.prefetch(tf.data.experimental.AUTOTUNE)
-    valid_set = iter(valid_set)
-
-    test_set = test.map(lambda x, y=img_size, z=True: preprocessing(x, y, z))
-    test_set = test_set.repeat().padded_batch(
-        batch_size=1,
-        padded_shapes=data_shapes,
-        padding_values=padding_values,
-        drop_remainder=True,
-    )
-    test_set = test_set.prefetch(tf.data.experimental.AUTOTUNE)
-    test_set = iter(test_set)
-
-    anchors = generate_anchors(hyper_params)
-
-    rpn_model, dtn_model = build_graph(hyper_params)
-
-    boundaries = [100000, 200000, 300000]
-    values = [1e-5, 1e-6, 1e-7, 1e-8]
-    learning_rate_fn = tf.keras.optimizers.schedules.PiecewiseConstantDecay(
-        boundaries, values
-    )
-
-    optimizer1 = tf.keras.optimizers.Adam(learning_rate=learning_rate_fn)
-    optimizer2 = tf.keras.optimizers.Adam(learning_rate=learning_rate_fn)
-
-    if not (os.path.exists(f"model_ckpt/{dataset_name}")):
-        os.makedirs(f"model_ckpt/{dataset_name}/rpn_weights")
-        os.makedirs(f"model_ckpt/{dataset_name}/dtn_weights")
-
-    step = 0
-    best_mAP = 0
-    iters = round(epochs * one_epoch / batch_size)
-    progress_train = tqdm(range(iters))
-    progress_train.set_description(
-        "iteration {}/{} | current loss ?".format(step, iters)
-    )
+def train(
+    run,
+    args,
+    train_num,
+    train_set,
+    valid_set,
+    labels,
+    anchors,
+    rpn_model,
+    dtn_model,
+    optimizer1,
+    optimizer2,
+    weights_dir,
+    ):
+    best_mean_ap = 0
     start_time = time.time()
 
-    for _ in progress_train:
-        try:
-            img, gt_boxes, gt_labels = next(train_set)
-        except:
-            continue
-        bbox_deltas, bbox_labels = rpn_target(
-            anchors, gt_boxes, gt_labels, hyper_params
-        )
-        (
-            rpn_reg_loss,
-            rpn_cls_loss,
-            rpn_reg_output,
-            rpn_cls_output,
-            feature_map,
-        ) = train_step1(img, bbox_deltas, bbox_labels, hyper_params)
+    for epoch in range(args.epochs):
+        epoch_progress = tqdm(range(train_num//args.batch_size))
+        for _ in epoch_progress:
+            image, gt_boxes, gt_labels = next(train_set)
 
-        roi_bboxes, _ = RoIBBox(rpn_reg_output, rpn_cls_output, anchors, hyper_params)
-        pooled_roi = RoIAlign(roi_bboxes, feature_map, hyper_params)
-        roi_deltas, roi_labels = dtn_target(
-            roi_bboxes, gt_boxes, gt_labels, hyper_params
-        )
-        dtn_reg_loss, dtn_cls_loss = train_step2(pooled_roi, roi_deltas, roi_labels)
-        total_loss = rpn_reg_loss + rpn_cls_loss + dtn_reg_loss + dtn_cls_loss
+            true_rpn = build_rpn_target(anchors, gt_boxes, gt_labels, args)
+            loss_rpn, rpn_reg_output, rpn_cls_output, feature_map = forward_backward_rpn(image, true_rpn, rpn_model, optimizer1, args)
 
-        step += 1
+            roi_bboxes, _ = RoIBBox(rpn_reg_output, rpn_cls_output, anchors, args)
+            pooled_roi = RoIAlign(roi_bboxes, feature_map, args)
 
-        progress_train.set_description(
-            "iteration {}/{} | rpn_reg {:.4f}, rpn_cls {:.4f}, dtn_reg {:.4f}, dtn_cls {:.4f}, loss {:.4f}".format(
-                step,
-                iters,
-                rpn_reg_loss.numpy(),
-                rpn_cls_loss.numpy(),
-                dtn_reg_loss.numpy(),
-                dtn_cls_loss.numpy(),
-                (total_loss).numpy(),
+            true_dtn = build_dtn_target(roi_bboxes, gt_boxes, gt_labels, len(labels), args)
+            loss_dtn = forward_backward_dtn(pooled_roi, true_dtn, dtn_model, optimizer2, args, len(labels))
+
+            total_loss = tf.reduce_sum(loss_rpn + loss_dtn)
+            record_train_loss(run, loss_rpn, loss_dtn, total_loss)
+
+            epoch_progress.set_description(
+                "Epoch {}/{} | yx {:.4f}, hw {:.4f}, obj {:.4f}, nobj {:.4f}, cls {:.4f}, total {:.4f}".format(
+                    epoch+1,
+                    args.epochs,
+                    loss_rpn[0].numpy(),
+                    loss_rpn[1].numpy(),
+                    loss_dtn[0].numpy(),
+                    loss_dtn[1].numpy(),
+                    total_loss.numpy(),
+                )
             )
-        )
+        mean_ap = validation(valid_set, rpn_model, dtn_model, labels)
 
-        run["train/loss/rpn_reg_loss"].log(rpn_reg_loss.numpy())
-        run["train/loss/rpn_cls_loss"].log(rpn_cls_loss.numpy())
-        run["train/loss/dtn_reg_loss"].log(dtn_reg_loss.numpy())
-        run["train/loss/dtn_cls_loss"].log(dtn_cls_loss.numpy())
-        run["train/loss/total_loss"].log(total_loss.numpy())
+        run["validation/mAP"].log(mean_ap.numpy())
 
-        if step % round(one_epoch / batch_size) == 0:
-            mAP = []
-            progress_valid = tqdm(range(100))
-
-            for _ in progress_valid:
-                img, gt_boxes, gt_labels = next(test_set)
-                rpn_reg_output, rpn_cls_output, feature_map = rpn_model(img)
-                roi_bboxes, roi_scores = RoIBBox(
-                    rpn_reg_output, rpn_cls_output, anchors, hyper_params
-                )
-                pooled_roi = RoIAlign(roi_bboxes, feature_map, hyper_params)
-                dtn_reg_output, dtn_cls_output = dtn_model(pooled_roi)
-                final_bboxes, final_labels, final_scores = Decode(
-                    dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params
-                )
-                AP = calculate_AP(
-                    final_bboxes,
-                    final_labels,
-                    gt_boxes,
-                    gt_labels,
-                    hyper_params,
-                )
-                mAP.append(AP)
-
-            mAP_res = tf.reduce_mean(mAP)
-            run["validation/mAP"].log(mAP_res.numpy())
-
-            if mAP_res.numpy() > best_mAP:
-                best_mAP = mAP_res.numpy()
-                ckpt_dir = f"model_ckpt/{dataset_name}/rpn_weights"
-                rpn_model.save_weights(f"{ckpt_dir}/weights")
-                ckpt = os.listdir(ckpt_dir)
-                for i in range(len(ckpt)):
-                    run[f"{ckpt_dir}/{ckpt[i]}"].upload(f"{ckpt_dir}/{ckpt[i]}")
-
-                ckpt_dir = f"model_ckpt/{dataset_name}/dtn_weights"
-                rpn_model.save_weights(f"{ckpt_dir}/weights")
-                ckpt = os.listdir(ckpt_dir)
-                for i in range(len(ckpt)):
-                    run[f"{ckpt_dir}/{ckpt[i]}"].upload(f"{ckpt_dir}/{ckpt[i]}")
+        if mean_ap.numpy() > best_mean_ap:
+            best_mean_ap = mean_ap.numpy()
+            rpn_model.save_weights(f"{weights_dir}_rpn.h5")
+            dtn_model.save_weights(f"{weights_dir}_dtn.h5")
 
     train_time = time.time() - start_time
 
-    rpn_model.load_weights(f"model_ckpt/{dataset_name}/rpn_weights/weights")
-    dtn_model.load_weights(f"model_ckpt/{dataset_name}/dtn_weights/weights")
+    return train_time
 
-    total_time = []
-    mAP = []
-    progress_test = tqdm(range(1000))
 
-    step = 0
-    for _ in progress_test:
-        img, gt_boxes, gt_labels = next(test_set)
-        start_time = time.time()
-        rpn_reg_output, rpn_cls_output, feature_map = rpn_model(img)
-        roi_bboxes, roi_scores = RoIBBox(
-            rpn_reg_output, rpn_cls_output, anchors, hyper_params
-        )
-        pooled_roi = RoIAlign(roi_bboxes, feature_map, hyper_params)
+def validation(valid_set, rpn_model, dtn_model, labels):
+    aps = []
+    validation_progress = tqdm(range(100))
+    for _ in validation_progress:
+        image, gt_boxes, gt_labels = next(valid_set)
+        rpn_reg_output, rpn_cls_output, feature_map = rpn_model(image)
+        roi_bboxes, _ = RoIBBox(rpn_reg_output, rpn_cls_output, anchors, args)
+        pooled_roi = RoIAlign(roi_bboxes, feature_map, args)
         dtn_reg_output, dtn_cls_output = dtn_model(pooled_roi)
         final_bboxes, final_labels, final_scores = Decode(
-            dtn_reg_output, dtn_cls_output, roi_bboxes, hyper_params
+            dtn_reg_output, dtn_cls_output, roi_bboxes, args, len(labels)
         )
-        test_time = float(time.time() - start_time) * 1000
-        AP = calculate_AP_const(
-            final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params
+
+        ap = calculate_ap_const(final_bboxes, final_labels, gt_boxes, gt_labels, labels)
+        validation_progress.set_description("Validation | Average_Precision {:.4f}".format(ap))
+        aps.append(ap)
+
+    mean_ap = tf.reduce_mean(aps)
+
+    return mean_ap
+
+def test(run, test_num, test_set, rpn_model, dtn_model, labels):
+    test_times = []
+    aps = []
+    test_progress = tqdm(range(test_num))
+    for step in test_progress:
+        image, gt_boxes, gt_labels = next(test_set)
+        start_time = time.time()
+        rpn_reg_output, rpn_cls_output, feature_map = rpn_model(image)
+        roi_bboxes, roi_scores = RoIBBox(rpn_reg_output, rpn_cls_output, anchors, args)
+        pooled_roi = RoIAlign(roi_bboxes, feature_map, args)
+        dtn_reg_output, dtn_cls_output = dtn_model(pooled_roi)
+        final_bboxes, final_labels, final_scores = Decode(
+            dtn_reg_output, dtn_cls_output, roi_bboxes, args, len(labels)
         )
-        total_time.append(test_time)
-        mAP.append(AP)
-        if step // 50 == 0:
+        test_time = time.time() - start_time
+
+        ap = calculate_ap_const(final_bboxes, final_labels, gt_boxes, gt_labels, labels)
+        test_progress.set_description("Test | Average_Precision {:.4f}".format(ap))
+        aps.append(ap)
+        test_times.append(test_time)
+
+        if step <= 20 == 0:
             run["outputs/rpn"].log(
-                neptune.types.File.as_image(draw_rpn_output(img, roi_bboxes, roi_scores, 5))
+                neptune.types.File.as_image(draw_rpn_output(image, roi_bboxes, roi_scores, 5))
             )
             run["outputs/dtn"].log(
                 neptune.types.File.as_image(
-                    draw_dtn_output(img, final_bboxes, labels, final_labels, final_scores)
+                    draw_dtn_output(image, final_bboxes, labels, final_labels, final_scores)
                 )
             )
-        step += 1
 
-    mAP_res = "%.3f" % (tf.reduce_mean(mAP))
-    total_time_res = "%.2fms" % (tf.reduce_mean(total_time))
-    result = {
-        "mAP": mAP_res,
-        "train_set_num": one_epoch,
-        "train_time": train_time,
-        "inference_time": total_time_res,
-    }
-    
-    run["results"] = result
-    log_dir = os.listdir(".neptune/offline")[0]
-    cmd = f"neptune sync -p wonhyung64/model-frcnn --run offline/{log_dir}"
-    subprocess.check_output(cmd, shell = True)
+    mean_ap = tf.reduce_mean(aps)
+    mean_test_time = tf.reduce_mean(test_times)
 
-
-    repository_name = "Faster_R-CNN"
-    title = f"experiment_tracking : {experiment_id}"
-    body = f"""
-mAP: {mAP_res},
-train_set_num: {one_epoch},
-train_time: {train_time},
-inference_time: {total_time_res},
-dataset_name: {dataset_name},
-base_model: {base_model},
-url: {neptune_url}
-    """
-    repo = get_github_repo(GITHUB_TOKEN, repository_name)
-    upload_github_issue(repo, title, body)
-
-
+    return mean_ap, mean_test_time
 
 #%%
 if __name__ == "__main__":
+    args = build_args()
+    os.makedirs("./data_chkr", exist_ok=True)
+    run = plugin_neptune(NEPTUNE_API_KEY, NEPTUNE_PROJECT, args)
 
-    parser = argparse.ArgumentParser()
+    experiment_name = run.get_run_url().split("/")[-1].replace("-", "_")
+    experiment_dir = "./model_weights/experiment"
+    os.makedirs(experiment_dir, exist_ok=True)
+    weights_dir = f"{experiment_dir}/{experiment_name}"
+
+    datasets, labels, train_num, test_num = load_dataset(name=args.name, data_dir=args.data_dir)
+    train_set, valid_set, test_set = build_dataset(datasets, args.batch_size, args.img_size)
+    anchors = build_anchors(args)
+
+    rpn_model, dtn_model = build_models(args, len(labels))
+    optimizer1, optimizer2 = build_optimizer(args.batch_size, train_num):
+
+    train_time = train(run, args, train_num, train_set, valid_set, labels, anchors, rpn_model, dtn_model, optimizer1, optimizer2, weights_dir)
+
+    rpn_model.load_weights(f"{weights_dir}_rpn.h5")
+    dtn_model.load_weights(f"{weights_dir}_dtn.h5")
+
     parser.add_argument("--base-model", type = str)
     parser.add_argument("--dataset-name", type = str)
     
