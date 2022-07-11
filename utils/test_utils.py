@@ -41,9 +41,8 @@ def calculate_ap_per_class(recall, precision):
 
 
 def calculate_ap_const(
-    final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params, mAP_threshold=0.5
+    final_bboxes, final_labels, gt_boxes, gt_labels, total_labels, mAP_threshold=0.5
 ):
-    total_labels = hyper_params["total_labels"]
     AP = []
     for c in range(1, total_labels):
         if tf.math.reduce_any(final_labels == c) or tf.math.reduce_any(gt_labels == c):
@@ -63,8 +62,7 @@ def calculate_ap_const(
     return AP
 
 
-def calculate_ap(final_bboxes, final_labels, gt_boxes, gt_labels, hyper_params):
-    total_labels = hyper_params["total_labels"]
+def calculate_ap(final_bboxes, final_labels, gt_boxes, gt_labels, total_labels):
     mAP_threshold_lst = np.arange(0.5, 1.0, 0.05)
     APs = []
     for mAP_threshold in mAP_threshold_lst:
