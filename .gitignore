@@ -16,3 +16,4 @@ SLURM*
 utils/variable.py
 data_chkr
 .pyc
+model_weights/
