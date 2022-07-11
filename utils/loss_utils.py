@@ -50,7 +50,6 @@ def dtn_reg_loss_fn(
     total_labels,
     batch_size,
     train_nms_topn,
-    
 ) -> tf.Tensor:
     """
     calculate Detection Network Regression loss
