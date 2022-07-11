@@ -50,6 +50,7 @@ from .draw_utils import (
 from .neptune_utils import (
     plugin_neptune,
     record_train_loss,
+    record_result,
 )
 
 from.variable import (
