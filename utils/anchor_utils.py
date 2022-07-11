@@ -10,7 +10,7 @@ def build_anchors(args) -> tf.Tensor:
     Returns:
         tf.Tensor: anchors
     """
-    grid_map = build_grid(args.feature_map_shape)
+    grid_map = build_grid(args.feature_map_shape[0])
 
     base_anchors = []
     for scale in args.anchor_scales:
