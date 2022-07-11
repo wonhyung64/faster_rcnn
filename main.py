@@ -128,7 +128,7 @@ def validation(valid_set, rpn_model, dtn_model, labels, anchors, args):
             dtn_reg_output, dtn_cls_output, roi_bboxes, args, len(labels)
         )
 
-        ap = calculate_ap_const(final_bboxes, final_labels, gt_boxes, gt_labels, labels)
+        ap = calculate_ap_const(final_bboxes, final_labels, gt_boxes, gt_labels, len(labels))
         validation_progress.set_description("Validation | Average_Precision {:.4f}".format(ap))
         aps.append(ap)
 
