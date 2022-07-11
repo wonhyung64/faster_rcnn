@@ -3,7 +3,7 @@ from typing import Dict
 
 
 def rpn_reg_loss_fn(
-    pred: tf.Tensor, bbox_deltas: tf.Tensor, bbox_labels: tf.Tensor, args
+    pred: tf.Tensor, bbox_deltas: tf.Tensor, bbox_labels: tf.Tensor, batch_size, feature_map_shape, anchor_ratios, anchor_scales, total_pos_bboxes, total_neg_bboxes
 ) -> tf.Tensor:
     """
     calculate Region Proposal Regression loss
@@ -19,16 +19,16 @@ def rpn_reg_loss_fn(
     """
     pred = tf.reshape(
         pred,
-        [args.batch_size] + args.feature_map_shape + [len(args.anchor_ratios) * len(args.anchor_scales), 4]
+        [batch_size] + feature_map_shape + [len(anchor_ratios) * len(anchor_scales), 4]
         )
     bbox_deltas = tf.reshape(
         bbox_deltas,
-        [args.batch_size] + args.feature_map_shape + [len(args.anchor_ratios) * len(args.anchor_scales), 4]
+        [batch_size] + feature_map_shape + [len(anchor_ratios) * len(anchor_scales), 4]
         )
 
-    total_anchors_loc = args.feature_map_shape[0] * args.feature_map_shape[1]
+    total_anchors_loc = feature_map_shape[0] * feature_map_shape[1]
 
-    tune_param = total_anchors_loc / (args.total_pos_bboxes + args.total_neg_bboxes)
+    tune_param = total_anchors_loc / (total_pos_bboxes + total_neg_bboxes)
 
     loss_fn = tf.losses.Huber(reduction=tf.losses.Reduction.NONE)
 
@@ -47,8 +47,10 @@ def dtn_reg_loss_fn(
     pred: tf.Tensor,
     frcnn_reg_actuals: tf.Tensor,
     frcnn_cls_actuals: tf.Tensor,
-    args,
-    total_labels
+    total_labels,
+    batch_size,
+    train_nms_topn,
+    
 ) -> tf.Tensor:
     """
     calculate Detection Network Regression loss
@@ -64,12 +66,12 @@ def dtn_reg_loss_fn(
     """
     pred = tf.reshape(
         pred,
-        [args.batch_size, args.train_nms_topn, total_labels, 4]
+        [batch_size, train_nms_topn, total_labels, 4]
         )
 
     frcnn_reg_actuals = tf.reshape(
         frcnn_reg_actuals,
-        [args.batch_size, args.train_nms_topn, total_labels, 4]
+        [batch_size, train_nms_topn, total_labels, 4]
         )
 
     loss_fn = tf.losses.Huber(reduction=tf.losses.Reduction.NONE)
