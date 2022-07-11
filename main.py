@@ -153,7 +153,7 @@ def test(run, test_num, test_set, rpn_model, dtn_model, labels, anchors, args):
         )
         test_time = time.time() - start_time
 
-        ap = calculate_ap_const(final_bboxes, final_labels, gt_boxes, gt_labels, labels)
+        ap = calculate_ap_const(final_bboxes, final_labels, gt_boxes, gt_labels, len(labels))
         test_progress.set_description("Test | Average_Precision {:.4f}".format(ap))
         aps.append(ap)
         test_times.append(test_time)
