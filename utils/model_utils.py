@@ -17,15 +17,17 @@ class RPN(Model):
         """
         super(RPN, self).__init__()
         self.args = args
+        self.shape = args.img_size + [3]
+        self.anchor_counts = len(self.args.anchor_ratios) * len(self.args.anchor_scales)
         if args.base_model == "vgg16":
             self.base_model = VGG16(
                 include_top=False,
-                input_shape=args.img_size + [3],
+                input_shape=self.shape,
                 )
         elif args.base_model == "vgg19":
             self.base_model = VGG19(
                 include_top=False,
-                input_shape=args.img_size + [3],
+                input_shape=self.shape,
                 )
         self.layer = self.base_model.get_layer("block5_conv3").output
 
@@ -41,14 +43,14 @@ class RPN(Model):
         )
 
         self.rpn_cls_output = Conv2D(
-            filters=self.args.anchor_count,
+            filters=self.anchor_counts,
             kernel_size=(1, 1),
             activation="sigmoid",
             name="rpn_cls",
         )
 
         self.rpn_reg_output = Conv2D(
-            filters=self.args.anchor_count * 4,
+            filters=self.anchor_counts * 4,
             kernel_size=(1, 1),
             activation="linear",
             name="rpn_reg",
@@ -128,7 +130,7 @@ def build_models(args, total_labels):
     rpn_model.build(input_shape)
 
     dtn_model = DTN(args, total_labels)
-    input_shape = [None] + args.train_nms_topn + [7, 7, 512]
+    input_shape = [None, args.train_nms_topn, 7, 7, 512]
     dtn_model.build(input_shape)
 
     return rpn_model, dtn_model
