@@ -24,15 +24,23 @@ def build_optimizer(batch_size, data_num):
 
 
 @tf.function
-def forward_backward_rpn(image, true, model, optimizer, args):
+def forward_backward_rpn(image, true, model, optimizer, batch_size, feature_map_shape, anchor_ratios, anchor_scales, total_pos_bboxes, total_neg_bboxes):
     bbox_deltas, bbox_labels = true
     with tf.GradientTape(persistent=True) as tape:
         """RPN"""
         rpn_reg_output, rpn_cls_output, feature_map = model(image)
 
         rpn_reg_loss = rpn_reg_loss_fn(
-            rpn_reg_output, bbox_deltas, bbox_labels, args
-        )
+            rpn_reg_output,
+            bbox_deltas,
+            bbox_labels,
+            batch_size,
+            feature_map_shape,
+            anchor_ratios,
+            anchor_scales,
+            total_pos_bboxes,
+            total_neg_bboxes,
+            )
         rpn_cls_loss = rpn_cls_loss_fn(rpn_cls_output, bbox_labels)
         rpn_loss = rpn_reg_loss + rpn_cls_loss
 
@@ -43,15 +51,20 @@ def forward_backward_rpn(image, true, model, optimizer, args):
 
 
 @tf.function
-def forward_backward_dtn(pooled_roi, true, model, optimizer, args, total_labels):
+def forward_backward_dtn(pooled_roi, true, model, optimizer, total_labels, batch_size, train_nms_topn):
     roi_deltas, roi_labels = true
     with tf.GradientTape(persistent=True) as tape:
         """DTN"""
         dtn_reg_output, dtn_cls_output = model(pooled_roi, training=True)
 
         dtn_reg_loss = dtn_reg_loss_fn(
-            dtn_reg_output, roi_deltas, roi_labels, args, total_labels
-        )
+            dtn_reg_output,
+            roi_deltas,
+            roi_labels,
+            total_labels,
+            batch_size,
+            train_nms_topn
+            )
         dtn_cls_loss = dtn_cls_loss_fn(dtn_cls_output, roi_labels)
         dtn_loss = dtn_reg_loss + dtn_cls_loss
 
