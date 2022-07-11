@@ -15,4 +15,4 @@ date
 module add CUDA/11.2.2
 module add ANACONDA/2020.11
 
-python /home1/wonhyung64/Github/faster_rcnn/main.py --data-dir /home1/wonhyung64/data  --name voc/2012
+python /home1/wonhyung64/Github/Faster_R-CNN/main.py --data-dir /home1/wonhyung64/data  --name voc/2012
