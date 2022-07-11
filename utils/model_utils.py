@@ -146,10 +146,10 @@ def Decode(
     score_threshold=0.7,
     iou_threshold=0.5,
 ):
-    batch_size = args.batch_size
+    # batch_size = args.batch_size
     variances = args.variances
 
-    dtn_reg_output = tf.reshape(dtn_reg_output, (batch_size, -1, total_labels, 4))
+    dtn_reg_output = tf.reshape(dtn_reg_output, (1, -1, total_labels, 4))
     dtn_reg_output *= variances
 
     expanded_roi_bboxes = tf.tile(
