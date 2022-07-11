@@ -8,7 +8,7 @@ from .bbox_utils import (
 def build_rpn_target(anchors, gt_boxes, gt_labels, args):
     batch_size = args.batch_size
     feature_map_shape = args.feature_map_shape
-    anchor_count = len(args.anchor_scales) * len(args.anchor_count)
+    anchor_count = len(args.anchor_scales) * len(args.anchor_ratios)
     total_pos_bboxes = args.total_pos_bboxes
     total_neg_bboxes = args.total_neg_bboxes
     variances = args.variances
@@ -66,10 +66,10 @@ def build_rpn_target(anchors, gt_boxes, gt_labels, args):
 
     bbox_deltas = tf.reshape(
         bbox_deltas,
-        (batch_size, feature_map_shape, feature_map_shape, anchor_count * 4),
+        [batch_size] + feature_map_shape + [anchor_count * 4],
     )
     bbox_labels = tf.reshape(
-        bbox_labels, (batch_size, feature_map_shape, feature_map_shape, anchor_count)
+        bbox_labels, [batch_size] + feature_map_shape + [anchor_count],
     )
 
     return bbox_deltas, bbox_labels
