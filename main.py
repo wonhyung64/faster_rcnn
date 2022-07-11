@@ -107,8 +107,8 @@ def train(
 
         if mean_ap.numpy() > best_mean_ap:
             best_mean_ap = mean_ap.numpy()
-        rpn_model.save_weights(f"{weights_dir}_rpn.h5")
-        dtn_model.save_weights(f"{weights_dir}_dtn.h5")
+            rpn_model.save_weights(f"{weights_dir}_rpn.h5")
+            dtn_model.save_weights(f"{weights_dir}_dtn.h5")
 
     train_time = time.time() - start_time
 
