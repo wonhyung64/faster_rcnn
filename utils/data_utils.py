@@ -73,7 +73,7 @@ def build_data_num(dataset, dataset_name):
     return data_num
 
 
-def build_dataset(datasets, batch_size, img_size, strategy):
+def build_dataset(datasets, batch_size, img_size):
     train_set, valid_set, test_set = datasets
     data_shapes = ([None, None, None], [None, None], [None])
     padding_values = (
