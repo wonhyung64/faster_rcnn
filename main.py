@@ -158,7 +158,7 @@ def test(run, test_num, test_set, rpn_model, dtn_model, labels, anchors, args):
         aps.append(ap)
         test_times.append(test_time)
 
-        if step <= 20 == 0:
+        if step <= 20:
             run["outputs/rpn"].log(
                 neptune.types.File.as_image(draw_rpn_output(image, roi_bboxes, roi_scores, 5))
             )
