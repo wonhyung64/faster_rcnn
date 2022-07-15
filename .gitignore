@@ -13,7 +13,6 @@ __pycache__/
 /.neptune
 /run_frcnn_slurm*
 SLURM*
-utils/variable.py
 data_chkr
 .pyc
 model_weights/
