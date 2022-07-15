@@ -29,19 +29,19 @@ def load_dataset(name, data_dir):
     )
     train_set = train1.concatenate(train2)
 
-    train_num, test_num = load_data_num(name, train_set, test_set)
+    train_num, valid_num, test_num = load_data_num(name, train_set, valid_set, test_set)
 
     try:
         labels = dataset_info.features["labels"].names
     except:
         labels = dataset_info.features["objects"]["label"].names
 
-    return (train_set, valid_set, test_set), labels, train_num, test_num
+    return (train_set, valid_set, test_set), labels, train_num, valid_num, test_num
 
 
-def load_data_num(name, train_set, test_set):
+def load_data_num(name, train_set, valid_set, test_set):
     data_nums = []
-    for dataset, dataset_name in ((train_set, "train"), (test_set, "test")):
+    for dataset, dataset_name in ((train_set, "train"), (valid_set, "validation"), (test_set, "test")):
         data_num_dir = (
             f"./data_chkr/{''.join(char for char in name if char.isalnum())}_{dataset_name}_num.txt"
         )
@@ -94,18 +94,8 @@ def build_dataset(datasets, batch_size, img_size):
         padding_values=padding_values,
         drop_remainder=True,
     )
-    valid_set = valid_set.repeat().padded_batch(
-        batch_size=1,
-        padded_shapes=data_shapes,
-        padding_values=padding_values,
-        drop_remainder=True,
-    )
-    test_set = test_set.repeat().padded_batch(
-        batch_size=1,
-        padded_shapes=data_shapes,
-        padding_values=padding_values,
-        drop_remainder=True,
-    )
+    valid_set = valid_set.repeat().batch(1)
+    test_set = test_set.repeat().batch(1)
 
     train_set = train_set.prefetch(tf.data.experimental.AUTOTUNE)
     valid_set = valid_set.prefetch(tf.data.experimental.AUTOTUNE)
