@@ -66,13 +66,14 @@ from .data_utils import (
     evaluate,
     rand_flip_horiz,
     preprocess,
+    load_data_num,
+    build_data_num,
 )
 
 from .opt_utils import (
     build_optimizer,
     forward_backward_rpn,
     forward_backward_dtn,
-    
 )
 
 from .process_utils import (
