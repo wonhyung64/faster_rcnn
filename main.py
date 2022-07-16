@@ -10,7 +10,7 @@ from utils import (
 
 def main():
     args, run, weights_dir = initialize_process(
-        args.data_dir, NEPTUNE_API_KEY, NEPTUNE_PROJECT
+        NEPTUNE_API_KEY, NEPTUNE_PROJECT
     )
 
     datasets, labels, train_num, valid_num, test_num = load_dataset(
