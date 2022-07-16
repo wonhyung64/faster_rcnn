@@ -7,25 +7,23 @@ from tensorflow.keras.layers import Lambda
 
 
 def load_dataset(name, data_dir):
-    data_dir = f"{data_dir}/tfds"
-
     train1, dataset_info = tfds.load(
-        name=name, split="train", data_dir=data_dir, with_info=True
+        name=name, split="train", data_dir=f"{data_dir}/tfds", with_info=True
     )
     train2 = tfds.load(
         name=name,
         split="validation[100:]",
-        data_dir=data_dir,
+        data_dir=f"{data_dir}/tfds",
     )
     valid_set = tfds.load(
         name=name,
         split="validation[:100]",
-        data_dir=data_dir,
+        data_dir=f"{data_dir}/tfds",
     )
     test_set = tfds.load(
         name=name,
         split="train[:10%]",
-        data_dir=data_dir,
+        data_dir=f"{data_dir}/tfds",
     )
     train_set = train1.concatenate(train2)
 
@@ -37,6 +35,7 @@ def load_dataset(name, data_dir):
         labels = dataset_info.features["labels"].names
     except:
         labels = dataset_info.features["objects"]["label"].names
+    labels = ["bg"] + labels
 
     return (train_set, valid_set, test_set), labels, train_num, valid_num, test_num
 
