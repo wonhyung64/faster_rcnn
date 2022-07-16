@@ -29,7 +29,9 @@ def load_dataset(name, data_dir):
     )
     train_set = train1.concatenate(train2)
 
-    train_num, valid_num, test_num = load_data_num(name, data_dir, train_set, valid_set, test_set)
+    train_num, valid_num, test_num = load_data_num(
+        name, data_dir, train_set, valid_set, test_set
+    )
 
     try:
         labels = dataset_info.features["labels"].names
@@ -41,10 +43,12 @@ def load_dataset(name, data_dir):
 
 def load_data_num(name, data_dir, train_set, valid_set, test_set):
     data_nums = []
-    for dataset, dataset_name in ((train_set, "train"), (valid_set, "validation"), (test_set, "test")):
-        data_num_dir = (
-            f"{data_dir}/data_chkr/{''.join(char for char in name if char.isalnum())}_{dataset_name}_num.txt"
-        )
+    for dataset, dataset_name in (
+        (train_set, "train"),
+        (valid_set, "validation"),
+        (test_set, "test"),
+    ):
+        data_num_dir = f"{data_dir}/data_chkr/{''.join(char for char in name if char.isalnum())}_{dataset_name}_num.txt"
 
         if not (os.path.exists(data_num_dir)):
             data_num = build_data_num(dataset, dataset_name)
@@ -100,7 +104,7 @@ def build_dataset(datasets, batch_size, img_size):
     train_set = train_set.prefetch(tf.data.experimental.AUTOTUNE)
     valid_set = valid_set.prefetch(tf.data.experimental.AUTOTUNE)
     test_set = test_set.prefetch(tf.data.experimental.AUTOTUNE)
-    
+
     train_set = iter(train_set)
     valid_set = iter(valid_set)
     test_set = iter(test_set)

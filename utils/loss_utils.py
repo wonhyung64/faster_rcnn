@@ -3,7 +3,15 @@ from typing import Dict
 
 
 def rpn_reg_loss_fn(
-    pred: tf.Tensor, bbox_deltas: tf.Tensor, bbox_labels: tf.Tensor, batch_size, feature_map_shape, anchor_ratios, anchor_scales, total_pos_bboxes, total_neg_bboxes
+    pred: tf.Tensor,
+    bbox_deltas: tf.Tensor,
+    bbox_labels: tf.Tensor,
+    batch_size,
+    feature_map_shape,
+    anchor_ratios,
+    anchor_scales,
+    total_pos_bboxes,
+    total_neg_bboxes,
 ) -> tf.Tensor:
     """
     calculate Region Proposal Regression loss
@@ -19,12 +27,12 @@ def rpn_reg_loss_fn(
     """
     pred = tf.reshape(
         pred,
-        [batch_size] + feature_map_shape + [len(anchor_ratios) * len(anchor_scales), 4]
-        )
+        [batch_size] + feature_map_shape + [len(anchor_ratios) * len(anchor_scales), 4],
+    )
     bbox_deltas = tf.reshape(
         bbox_deltas,
-        [batch_size] + feature_map_shape + [len(anchor_ratios) * len(anchor_scales), 4]
-        )
+        [batch_size] + feature_map_shape + [len(anchor_ratios) * len(anchor_scales), 4],
+    )
 
     total_anchors_loc = feature_map_shape[0] * feature_map_shape[1]
 
@@ -63,15 +71,11 @@ def dtn_reg_loss_fn(
     Returns:
         tf.Tensor: detection network regression loss
     """
-    pred = tf.reshape(
-        pred,
-        [batch_size, train_nms_topn, total_labels, 4]
-        )
+    pred = tf.reshape(pred, [batch_size, train_nms_topn, total_labels, 4])
 
     frcnn_reg_actuals = tf.reshape(
-        frcnn_reg_actuals,
-        [batch_size, train_nms_topn, total_labels, 4]
-        )
+        frcnn_reg_actuals, [batch_size, train_nms_topn, total_labels, 4]
+    )
 
     loss_fn = tf.losses.Huber(reduction=tf.losses.Reduction.NONE)
 

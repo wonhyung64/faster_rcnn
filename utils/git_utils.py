@@ -1,7 +1,9 @@
-try: from github import Github
+try:
+    from github import Github
 except:
     import sys
     import subprocess
+
     subprocess.check_call([sys.executable, "-m", "pip", "install", "PyGithub"])
     from github import Github
 

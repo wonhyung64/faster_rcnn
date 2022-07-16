@@ -1,18 +1,19 @@
-
 import sys
 import subprocess
 
-try: import neptune.new as neptune
+try:
+    import neptune.new as neptune
 except:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "neptune-client"])
     import neptune.new as neptune
 
 
 def plugin_neptune(NEPTUNE_API_KEY, NEPTUNE_PROJECT, args):
-    run = neptune.init(project=NEPTUNE_PROJECT,
-                       api_token=NEPTUNE_API_KEY,
-                       mode="async",
-                       )
+    run = neptune.init(
+        project=NEPTUNE_PROJECT,
+        api_token=NEPTUNE_API_KEY,
+        mode="async",
+    )
 
     run["sys/name"] = "frcnn-optimization"
     run["sys/tags"].add([f"{key}: {value}" for key, value in args._get_kwargs()])

@@ -53,7 +53,7 @@ from .neptune_utils import (
     record_result,
 )
 
-from.variable import (
+from .variable import (
     NEPTUNE_API_KEY,
     NEPTUNE_PROJECT,
 )

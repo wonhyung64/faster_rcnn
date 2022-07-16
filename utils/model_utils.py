@@ -23,12 +23,12 @@ class RPN(Model):
             self.base_model = VGG16(
                 include_top=False,
                 input_shape=self.shape,
-                )
+            )
         elif args.base_model == "vgg19":
             self.base_model = VGG19(
                 include_top=False,
                 input_shape=self.shape,
-                )
+            )
         self.layer = self.base_model.get_layer("block5_conv3").output
 
         self.feature_extractor = Model(inputs=self.base_model.input, outputs=self.layer)
@@ -126,7 +126,7 @@ class DTN(Model):
 
 def build_models(args, total_labels):
     rpn_model = RPN(args)
-    input_shape = [None] + args.img_size +  [3]
+    input_shape = [None] + args.img_size + [3]
     rpn_model.build(input_shape)
 
     dtn_model = DTN(args, total_labels)
@@ -189,7 +189,10 @@ def RoIBBox(
         post_nms_topn = args.test_nms_topn
     variances = args.variances
     total_anchors = (
-        args.feature_map_shape[0] * args.feature_map_shape[1] * len(args.anchor_ratios) * len(args.anchor_scales)
+        args.feature_map_shape[0]
+        * args.feature_map_shape[1]
+        * len(args.anchor_ratios)
+        * len(args.anchor_scales)
     )
     batch_size = tf.shape(rpn_reg_output)[0]
 
@@ -247,4 +250,3 @@ def RoIAlign(roi_bboxes, feature_map, args):
     )
 
     return pooled_roi
-    

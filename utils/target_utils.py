@@ -69,7 +69,8 @@ def build_rpn_target(anchors, gt_boxes, gt_labels, args):
         [batch_size] + feature_map_shape + [anchor_count * 4],
     )
     bbox_labels = tf.reshape(
-        bbox_labels, [batch_size] + feature_map_shape + [anchor_count],
+        bbox_labels,
+        [batch_size] + feature_map_shape + [anchor_count],
     )
 
     return bbox_deltas, bbox_labels
