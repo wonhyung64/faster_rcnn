@@ -25,9 +25,9 @@ from . import (
 )
 
 
-def initialize_process(NEPTUNE_API_KEY, NEPTUNE_PROJECT):
+def initialize_process(data_dir, NEPTUNE_API_KEY, NEPTUNE_PROJECT):
     args = build_args()
-    os.makedirs("./data_chkr", exist_ok=True)
+    os.makedirs(f"{data_dir}/data_chkr", exist_ok=True)
     run = plugin_neptune(NEPTUNE_API_KEY, NEPTUNE_PROJECT, args)
 
     experiment_name = run.get_run_url().split("/")[-1].replace("-", "_")

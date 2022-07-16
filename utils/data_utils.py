@@ -29,7 +29,7 @@ def load_dataset(name, data_dir):
     )
     train_set = train1.concatenate(train2)
 
-    train_num, valid_num, test_num = load_data_num(name, train_set, valid_set, test_set)
+    train_num, valid_num, test_num = load_data_num(name, data_dir, train_set, valid_set, test_set)
 
     try:
         labels = dataset_info.features["labels"].names
@@ -39,11 +39,11 @@ def load_dataset(name, data_dir):
     return (train_set, valid_set, test_set), labels, train_num, valid_num, test_num
 
 
-def load_data_num(name, train_set, valid_set, test_set):
+def load_data_num(name, data_dir, train_set, valid_set, test_set):
     data_nums = []
     for dataset, dataset_name in ((train_set, "train"), (valid_set, "validation"), (test_set, "test")):
         data_num_dir = (
-            f"./data_chkr/{''.join(char for char in name if char.isalnum())}_{dataset_name}_num.txt"
+            f"{data_dir}/data_chkr/{''.join(char for char in name if char.isalnum())}_{dataset_name}_num.txt"
         )
 
         if not (os.path.exists(data_num_dir)):
