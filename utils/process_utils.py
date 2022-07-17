@@ -31,7 +31,7 @@ def initialize_process(NEPTUNE_API_KEY, NEPTUNE_PROJECT):
     run = plugin_neptune(NEPTUNE_API_KEY, NEPTUNE_PROJECT, args)
 
     experiment_name = run.get_run_url().split("/")[-1].replace("-", "_")
-    model_name = NEPTUNE_PROJECT.split("-")[0]
+    model_name = NEPTUNE_PROJECT.split("-")[-1]
     experiment_dir = f"./model_weights/{model_name}"
     os.makedirs(experiment_dir, exist_ok=True)
     weights_dir = f"{experiment_dir}/{experiment_name}"
