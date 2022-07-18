@@ -52,7 +52,7 @@ def draw_dtn_output(
 
         final_labels_ = tf.reshape(final_labels[0], shape=(200,))
         final_scores_ = tf.reshape(final_scores[0], shape=(200,))
-        label_index = int(final_labels_[index])
+        label_index = int(final_labels_[index])+1
         color = tuple(colors[label_index].numpy())
         label_text = "{0} {1:0.3f}".format(labels[label_index], final_scores_[index])
         draw.text((x1 + 4, y1 + 2), label_text, fill=color)
