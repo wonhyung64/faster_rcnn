@@ -1,3 +1,4 @@
+#%%
 from utils import (
     initialize_process,
     load_dataset,
@@ -6,8 +7,7 @@ from utils import (
     NEPTUNE_API_KEY,
     NEPTUNE_PROJECT,
 )
-
-
+#%%
 def main():
     args, run, weights_dir = initialize_process(
         NEPTUNE_API_KEY, NEPTUNE_PROJECT
