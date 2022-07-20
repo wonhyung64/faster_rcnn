@@ -27,6 +27,10 @@ def build_args():
     )
     parser.add_argument("--pos-threshold", type=float, default=0.65)
     parser.add_argument("--neg-threshold", type=float, default=0.25)
-    args = parser.parse_args()
+
+    try:
+        args = parser.parse_args()
+    except:
+        args = parser.parse_args([])
 
     return args
