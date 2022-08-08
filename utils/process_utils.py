@@ -108,6 +108,7 @@ def train(
             try:
                 image, gt_boxes, gt_labels = next(train_set)
             except:
+                print("\nError Occured\n")
                 continue
 
             true_rpn = build_rpn_target(anchors, gt_boxes, gt_labels, args)
@@ -179,7 +180,11 @@ def validation(valid_set, valid_num, rpn_model, dtn_model, labels, anchors, args
     aps = []
     validation_progress = tqdm(range(valid_num))
     for _ in validation_progress:
-        image, gt_boxes, gt_labels = next(valid_set)
+        try:
+            image, gt_boxes, gt_labels = next(valid_set)
+        except:
+            print("\nError Occured\n")
+            continue
         rpn_reg_output, rpn_cls_output, feature_map = rpn_model(image)
         roi_bboxes, _ = RoIBBox(rpn_reg_output, rpn_cls_output, anchors, args)
         pooled_roi = RoIAlign(roi_bboxes, feature_map, args)
@@ -211,7 +216,11 @@ def test(
     aps = []
     test_progress = tqdm(range(test_num))
     for step in test_progress:
-        image, gt_boxes, gt_labels = next(test_set)
+        try:
+            image, gt_boxes, gt_labels = next(test_set)
+        except:
+            print("\nError Occured\n")
+            continue
         start_time = time.time()
         rpn_reg_output, rpn_cls_output, feature_map = rpn_model(image)
         roi_bboxes, roi_scores = RoIBBox(rpn_reg_output, rpn_cls_output, anchors, args)
