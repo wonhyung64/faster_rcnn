@@ -105,7 +105,10 @@ def train(
     for epoch in range(args.epochs):
         epoch_progress = tqdm(range(train_num // args.batch_size))
         for _ in epoch_progress:
-            image, gt_boxes, gt_labels = next(train_set)
+            try:
+                image, gt_boxes, gt_labels = next(train_set)
+            except:
+                continue
 
             true_rpn = build_rpn_target(anchors, gt_boxes, gt_labels, args)
             (
