@@ -214,6 +214,8 @@ def test(
 
     test_times = []
     aps = []
+    colors = tf.random.uniform((len(labels), 4), maxval=256, dtype=tf.int32)
+
     test_progress = tqdm(range(test_num))
     for step in test_progress:
         try:
@@ -247,7 +249,12 @@ def test(
             run["outputs/dtn"].log(
                 neptune.types.File.as_image(
                     draw_dtn_output(
-                        image, final_bboxes, labels, final_labels, final_scores
+                        image,
+                        final_bboxes,
+                        labels,
+                        final_labels,
+                        final_scores,
+                        colors
                     )
                 )
             )
