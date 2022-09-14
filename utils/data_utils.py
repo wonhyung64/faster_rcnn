@@ -167,6 +167,6 @@ def preprocess(dataset, split, img_size):
         image, gt_boxes = rand_flip_horiz(image, gt_boxes)
     else:
         gt_boxes, gt_labels = evaluate(gt_boxes, gt_labels, is_diff)
-    gt_labels = tf.cast(gt_labels, dtype=tf.int32)
+    gt_labels = tf.cast(gt_labels + 1, dtype=tf.int32)
 
     return image, gt_boxes, gt_labels
