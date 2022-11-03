@@ -7,7 +7,7 @@ def build_args():
     parser.add_argument("--epochs", type=int, default=75)
     parser.add_argument("--base-model", type=str, default="vgg16")
     parser.add_argument("--batch-size", type=int, default=2)
-    parser.add_argument("--data-dir", type=str, default="D:/won/data")
+    parser.add_argument("--data-dir", type=str, default="/Volumes/LaCie/data")
     parser.add_argument("--img-size", nargs="+", type=int, default=[500, 500])
     parser.add_argument("--feature-map-shape", nargs="+", type=int, default=[31, 31])
     parser.add_argument(
