@@ -17,6 +17,13 @@ from utils import (
     build_dataset,
 )
 from tqdm import tqdm
+import json
+import numpy as np
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
 
 #%%
 if __name__ == "__main__":
@@ -24,7 +31,7 @@ if __name__ == "__main__":
     run = neptune.init(
         project=NEPTUNE_PROJECT,
         api_token=NEPTUNE_API_KEY,
-        run="MOD-136"
+        run="MOD-202"
     )
     args.data_dir = "/Users/wonhyung64/data"
     args.batch_size = 1
@@ -41,10 +48,11 @@ if __name__ == "__main__":
     experiment_dir = f"./model_weights/{model_name}"
     os.makedirs(experiment_dir, exist_ok=True)
     weights_dir = f"{experiment_dir}/{experiment_name}"
-'''
+
+    '''
     run["rpn_model"].download(f"{weights_dir}_rpn.h5")
     run["dtn_model"].download(f"{weights_dir}_dtn.h5")
-'''
+    '''
 
     rpn_model, dtn_model = build_models(args, len(labels))
     rpn_model.load_weights(f"{weights_dir}_rpn.h5")
@@ -52,20 +60,53 @@ if __name__ == "__main__":
     anchors = build_anchors(args)
 
 #%%
-    test_progress = tqdm(range(1000))
+    test_progress = tqdm(range(train_num))
     colors = tf.random.uniform((len(labels), 4), maxval=256, dtype=tf.int32)
     for step in test_progress:
         # for _ in range(30):
         #     next(test_set)
         image, gt_boxes, gt_labels = next(train_set)
-        gt_labels
+        
         rpn_reg_output, rpn_cls_output, feature_map = rpn_model(image)
         roi_bboxes, roi_scores = RoIBBox(rpn_reg_output, rpn_cls_output, anchors, args)
         pooled_roi = RoIAlign(roi_bboxes, feature_map, args)
         dtn_reg_output, dtn_cls_output = dtn_model(pooled_roi)
-        final_bboxes, final_labels, final_scores = Decode(
+        # final_bboxes, final_labels, final_scores = Decode(
+        #     dtn_reg_output, dtn_cls_output, roi_bboxes, args, len(labels)
+        # )
+        pred_bboxes, pred_labels, final_bboxes, final_labels, final_scores = Decode(
             dtn_reg_output, dtn_cls_output, roi_bboxes, args, len(labels)
         )
+
+        sample = {
+            "gt_boxes": gt_boxes[0].numpy(),
+            "gt_labels": gt_labels[0].numpy(),
+            "roi_bboxes": roi_bboxes[0].numpy(),
+            "roi_scores": roi_scores[0].numpy(),
+            "pred_bboxes": pred_bboxes[0].numpy(),
+            "pred_labels": pred_labels[0].numpy(),
+            "final_bboxes": final_bboxes[0].numpy(),
+            "final_labels": final_labels[0].numpy(),
+            "final_scores": final_scores[0].numpy()
+        }
+
+        #save
+        path = "/Users/wonhyung64/data/diagnosis"
+        with open(f"{path}/sample{step}.json", "w") as f:
+            json.dump(sample, f, cls=NumpyEncoder)
+            json.dumps(sample, cls=NumpyEncoder)
+
+        #load
+        with open(f"{path}/sample{step}.json", encoding="UTF-8") as f:
+            json_load = json.load(f)
+        json_load = {k: np.asarray(json_load[k]) for k in json_load.keys()}
+
+
+        json.load(f"{path}/sample{step}.json")
+
+        json_load = json.loads(json_string)
+
+        restored = {k: np.asarray(json_load[k]) for k in json_load.keys()}
 
         result = draw_dtn_output(
             image, final_bboxes, labels, final_labels, final_scores, colors
