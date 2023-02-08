@@ -172,7 +172,8 @@ def Decode(
         score_threshold=score_threshold,
     )
 
-    return final_bboxes, final_labels, final_scores
+    # return final_bboxes, final_labels, final_scores
+    return pred_bboxes, pred_labels, final_bboxes, final_labels, final_scores
 
 
 def RoIBBox(
